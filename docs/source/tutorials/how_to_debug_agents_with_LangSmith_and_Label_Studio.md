@@ -185,7 +185,7 @@ for i, question in enumerate(questions, 1):
 ```
 
     
-    
+```
     [1m> Entering new AgentExecutor chain...[0m
     [32;1m[1;3mTo answer this question, I should search for the latest research articles on Visual Language Models on arXiv. This will provide me with the most recent developments and studies in this field.
     Action: arxiv
@@ -497,7 +497,7 @@ for i, question in enumerate(questions, 1):
     ✓ Run 3 completed. Run ID: ae390f69-6922-43f1-a98a-36c5da9f1af8
     Question: Explain the latest innovations in transformer architectures based on recent papers
     Response: Recent innovations in transformer architectures include their application to ECG diagnostics for better capturing temporal relationships, and advancements like Edge-MoE, which enhance computational ef...
-
+```
 
 ## 3. Collecting Traces
 
