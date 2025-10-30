@@ -103,9 +103,6 @@ This integration creates a powerful, automated ML workflow that transforms how y
 %pip install -q label-studio-sdk datasets transformers torch huggingface_hub accelerate
 
 print("✅ All packages installed successfully!")
-
-# 💡 Note: This installation snippet is also available in the Common Snippets notebook:
-# https://colab.research.google.com/drive/1nGTR48BzDshNvEAWjCa-R0GsHl_vRbwQ#scrollTo=zCXBqLUtJfWd (Section 1: Installation)
 ```
 
 ---

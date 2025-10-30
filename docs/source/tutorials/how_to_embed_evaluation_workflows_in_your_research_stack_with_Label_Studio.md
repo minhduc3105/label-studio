@@ -11,7 +11,7 @@ report_bug_url: https://github.com/HumanSignal/awesome-label-studio-tutorials/is
 ---
 ## Label Studio Requirements
 
-This tutorial showcases one or more features available only in Label Studio Enterprise. We recommend [connecting with our team](mailto:sales@humansignal.com) to request a trial or to enable them in your account.
+This tutorial showcases one or more features available only in Label Studio Enterprise. We recommend [connecting with our team](https://humansignal.com/contact-sales/) to request a trial or to enable them in your account.
 
 ## The Context-Switching Tax
 
@@ -43,7 +43,7 @@ This tutorial has two parts:
 
 ### 👤 **Part 1: Admin Setup (One-Time, ~5 minutes)**
 Your Label Studio **Owner/Admin** needs to:
-- Enable embedding for your organization ([request access](mailto:sales@humansignal.com))
+- Enable embedding for your organization ([request access](https://humansignal.com/contact-sales/))
 - Run Part 1 to generate keys and configure organization
 - **Share the private key** with ML engineers (via secure channel)
 
