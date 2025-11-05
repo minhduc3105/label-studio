@@ -4,6 +4,7 @@ import json
 import logging
 import mimetypes
 import time
+from functools import wraps
 from urllib.parse import unquote, urlparse
 
 from core.decorators import override_report_only_csp
@@ -44,6 +45,7 @@ from .functions import (
     set_import_background_failure,
     set_reimport_background_failure,
 )
+from .functions import convert_label_column_to_label
 from .models import FileUpload
 from .serializers import FileUploadSerializer, ImportApiSerializer, PredictionSerializer
 from .uploader import create_file_uploads, load_tasks
@@ -229,6 +231,24 @@ task_create_response_scheme = {
         },
     ),
 )
+
+
+def mark_import_api(name):
+    """
+    Decorator để đánh dấu API import đang được gọi.
+    Thêm header 'X-Import-Handler' vào response.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            response = func(*args, **kwargs)
+            if isinstance(response, Response):
+                # Thêm header
+                response['X-Import-Handler'] = name
+            return response
+        return wrapper
+    return decorator
+
 # Import
 class ImportAPI(generics.CreateAPIView):
     permission_required = all_permissions.projects_change
@@ -257,7 +277,8 @@ class ImportAPI(generics.CreateAPIView):
             self.request.user.active_organization, project, WebhookAction.TASKS_CREATED, task_instances
         )
         return task_instances, serializer
-
+    
+    @mark_import_api('ImportAPI.sync_import')
     def sync_import(self, request, project, preannotated_from_fields, commit_to_project, return_task_ids):
         start = time.time()
         tasks = None
@@ -350,6 +371,7 @@ class ImportAPI(generics.CreateAPIView):
         return Response(response, status=status.HTTP_201_CREATED)
 
     @timeit
+    @mark_import_api('ImportAPI.async_import')
     def async_import(self, request, project, preannotated_from_fields, commit_to_project, return_task_ids):
 
         project_import = ProjectImport.objects.create(
@@ -387,15 +409,9 @@ class ImportAPI(generics.CreateAPIView):
         else:
             raise ValidationError('load_tasks: No data found in DATA or in FILES')
 
-        start_job_async_or_sync(
-            async_import_background,
-            project_import.id,
-            request.user.id,
-            queue_name='high',
-            on_failure=set_import_background_failure,
-            project_id=project.id,
-            organization_id=request.user.active_organization.id,
-        )
+        # Thay thử để test
+        async_import_background(project_import.id, request.user.id, project_id=project.id, organization_id=request.user.active_organization.id)
+
 
         response = {'import': project_import.id}
         return Response(response, status=status.HTTP_201_CREATED)
@@ -630,11 +646,16 @@ class TasksBulkCreateAPI(ImportAPI):
 class ReImportAPI(ImportAPI):
     permission_required = all_permissions.projects_change
 
+    @mark_import_api('ReImportAPI.sync_reimport')
     def sync_reimport(self, project, file_upload_ids, files_as_tasks_list):
         start = time.time()
         tasks, found_formats, data_columns = FileUpload.load_tasks_from_uploaded_files(
             project, file_upload_ids, files_as_tasks_list=files_as_tasks_list
         )
+
+        if data_columns and 'label' in data_columns:
+            logger.info('label column found in data columns, processing as label of tasks')
+            tasks = convert_label_column_to_label(tasks, project, self.request.user)
 
         with transaction.atomic():
             project.remove_tasks_by_file_uploads(file_upload_ids)
@@ -676,14 +697,14 @@ class ReImportAPI(ImportAPI):
             status=status.HTTP_201_CREATED,
         )
 
+    @mark_import_api('ReImportAPI.async_reimport')
     def async_reimport(self, project, file_upload_ids, files_as_tasks_list, organization_id):
 
         project_reimport = ProjectReimport.objects.create(
             project=project, file_upload_ids=file_upload_ids, files_as_tasks_list=files_as_tasks_list
         )
 
-        start_job_async_or_sync(
-            async_reimport_background,
+        async_reimport_background(
             project_reimport.id,
             organization_id,
             self.request.user,
@@ -691,6 +712,7 @@ class ReImportAPI(ImportAPI):
             on_failure=set_reimport_background_failure,
             project_id=project.id,
         )
+        
 
         response = {'reimport': project_reimport.id}
         return Response(response, status=status.HTTP_201_CREATED)

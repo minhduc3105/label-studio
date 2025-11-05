@@ -17,7 +17,16 @@ import { Input, TextArea } from "../../components/Form";
 import { FF_LSDV_E_297, isFF } from "../../utils/feature-flags";
 import { createURL } from "../../components/HeidiTips/utils";
 
-const ProjectName = ({ name, setName, onSaveName, onSubmit, error, description, setDescription, show = true }) =>
+const ProjectName = ({
+  name,
+  setName,
+  onSaveName,
+  onSubmit,
+  error,
+  description,
+  setDescription,
+  show = true,
+}) =>
   !show ? null : (
     <form
       className={cn("project-name")}
@@ -61,7 +70,12 @@ const ProjectName = ({ name, setName, onSaveName, onSubmit, error, description, 
             Workspace
             <EnterpriseBadge className="ml-2" />
           </label>
-          <Select placeholder="Select an option" disabled options={[]} triggerClassName="!flex-1" />
+          <Select
+            placeholder="Select an option"
+            disabled
+            options={[]}
+            triggerClassName="!flex-1"
+          />
           <Typography size="small" className="mt-tight mb-wider">
             Simplify project management by organizing projects into workspaces.{" "}
             <a
@@ -70,7 +84,7 @@ const ProjectName = ({ name, setName, onSaveName, onSubmit, error, description, 
                 {
                   experiment: "project_creation_dropdown",
                   treatment: "simplify_project_management",
-                },
+                }
               )}
               target="_blank"
               rel="noreferrer"
@@ -112,13 +126,26 @@ export const CreateProject = ({ onClose }) => {
     setError(null);
   }, [name]);
 
-  const { columns, uploading, uploadDisabled, finishUpload, pageProps, uploadSample } = useImportPage(project, sample);
+  const {
+    columns,
+    uploading,
+    uploadDisabled,
+    finishUpload,
+    pageProps,
+    uploadSample,
+  } = useImportPage(project, sample);
 
   const rootClass = cn("create-project");
   const tabClass = rootClass.elem("tab");
   const steps = {
-    name: <span className={tabClass.mod({ disabled: !!error })}>Project Name</span>,
-    import: <span className={tabClass.mod({ disabled: uploadDisabled })}>Data Import</span>,
+    name: (
+      <span className={tabClass.mod({ disabled: !!error })}>Project Name</span>
+    ),
+    import: (
+      <span className={tabClass.mod({ disabled: uploadDisabled })}>
+        Data Import
+      </span>
+    ),
     config: "Labeling Setup",
   };
 
@@ -134,7 +161,7 @@ export const CreateProject = ({ onClose }) => {
       description,
       label_config: project?.label_config ?? "<View></View>",
     }),
-    [name, description, project?.label_config],
+    [name, description, project?.label_config]
   );
 
   const onCreate = React.useCallback(async () => {
@@ -197,7 +224,14 @@ export const CreateProject = ({ onClose }) => {
   }, [project]);
 
   return (
-    <Modal onHide={onDelete} closeOnClickOutside={false} allowToInterceptEscape fullscreen visible bare>
+    <Modal
+      onHide={onDelete}
+      closeOnClickOutside={false}
+      allowToInterceptEscape
+      fullscreen
+      visible
+      bare
+    >
       <div className={rootClass}>
         <Modal.Header>
           <h1>Create Project</h1>
