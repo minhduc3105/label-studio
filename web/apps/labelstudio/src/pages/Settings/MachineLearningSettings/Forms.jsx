@@ -2,7 +2,13 @@ import { useState } from "react";
 import { Button } from "@humansignal/ui";
 import { ErrorWrapper } from "../../../components/Error/Error";
 import { InlineError } from "../../../components/Error/InlineError";
-import { Form, Input, Select, TextArea, Toggle } from "../../../components/Form";
+import {
+  Form,
+  Input,
+  Select,
+  TextArea,
+  Toggle,
+} from "../../../components/Form";
 import "./MachineLearningSettings.scss";
 
 const CustomBackendForm = ({ action, backend, project, onSubmit }) => {
@@ -43,13 +49,23 @@ const CustomBackendForm = ({ action, backend, project, onSubmit }) => {
         />
       </Form.Row>
 
-      {(backend?.auth_method === "BASIC_AUTH" || selectedAuthMethod === "BASIC_AUTH") && (
+      {(backend?.auth_method === "BASIC_AUTH" ||
+        selectedAuthMethod === "BASIC_AUTH") && (
         <Form.Row columnCount={2}>
           <Input name="basic_auth_user" label="Basic auth user" />
           {backend?.basic_auth_pass_is_set ? (
-            <Input name="basic_auth_pass" label="Basic auth pass" type="password" placeholder="********" />
+            <Input
+              name="basic_auth_pass"
+              label="Basic auth pass"
+              type="password"
+              placeholder="********"
+            />
           ) : (
-            <Input name="basic_auth_pass" label="Basic auth pass" type="password" />
+            <Input
+              name="basic_auth_pass"
+              label="Basic auth pass"
+              type="password"
+            />
           )}
         </Form.Row>
       )}
@@ -71,7 +87,12 @@ const CustomBackendForm = ({ action, backend, project, onSubmit }) => {
       </Form.Row>
 
       <Form.Actions>
-        <Button type="submit" look="primary" onClick={() => setMLError(null)} aria-label="Save machine learning form">
+        <Button
+          type="submit"
+          look="primary"
+          onClick={() => setMLError(null)}
+          aria-label="Save machine learning form"
+        >
           Validate and Save
         </Button>
       </Form.Actions>
@@ -83,7 +104,9 @@ const CustomBackendForm = ({ action, backend, project, onSubmit }) => {
               <ErrorWrapper
                 error={{
                   response: {
-                    detail: `Failed to ${backend ? "save" : "add new"} ML backend.`,
+                    detail: `Failed to ${
+                      backend ? "save" : "add new"
+                    } ML backend.`,
                     exc_info: response.error_message,
                   },
                 }}

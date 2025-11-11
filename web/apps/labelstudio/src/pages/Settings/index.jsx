@@ -7,6 +7,8 @@ import { LabelingSettings } from "./LabelingSettings";
 import { MachineLearningSettings } from "./MachineLearningSettings/MachineLearningSettings";
 import { PredictionsSettings } from "./PredictionsSettings/PredictionsSettings";
 import { StorageSettings } from "./StorageSettings/StorageSettings";
+import { useAPI } from "../../providers/ApiProvider";
+import { ToolSettings } from "./ToolSettings/ToolSettings";
 import "./settings.scss";
 
 export const MenuLayout = ({ children, ...routeProps }) => {
@@ -17,6 +19,7 @@ export const MenuLayout = ({ children, ...routeProps }) => {
         LabelingSettings,
         AnnotationSettings,
         MachineLearningSettings,
+        ToolSettings,
         PredictionsSettings,
         StorageSettings,
         WebhookPage,
@@ -32,6 +35,7 @@ const pages = {
   AnnotationSettings,
   LabelingSettings,
   MachineLearningSettings,
+  ToolSettings,
   PredictionsSettings,
   StorageSettings,
   WebhookPage,

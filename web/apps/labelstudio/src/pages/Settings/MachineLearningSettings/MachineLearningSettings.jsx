@@ -1,6 +1,12 @@
 import { useCallback, useContext, useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Button, Typography, Spinner, EmptyState, SimpleCard } from "@humansignal/ui";
+import {
+  Button,
+  Typography,
+  Spinner,
+  EmptyState,
+  SimpleCard,
+} from "@humansignal/ui";
 import { useUpdatePageTitle, createTitleFromSegments } from "@humansignal/core";
 import { Form, Label, Toggle } from "../../../components/Form";
 import { modal } from "../../../components/Modal/Modal";
@@ -20,7 +26,9 @@ export const MachineLearningSettings = () => {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  useUpdatePageTitle(createTitleFromSegments([project?.title, "Model Settings"]));
+  useUpdatePageTitle(
+    createTitleFromSegments([project?.title, "Model Settings"])
+  );
 
   const fetchBackends = useCallback(async () => {
     setLoading(true);
@@ -47,7 +55,7 @@ export const MachineLearningSettings = () => {
 
       modal(modalProps);
     },
-    [project],
+    [project]
   );
 
   const showRequestModal = useCallback(
@@ -61,7 +69,7 @@ export const MachineLearningSettings = () => {
 
       modal(modalProps);
     },
-    [project],
+    [project]
   );
 
   const showMLFormModal = useCallback(
@@ -86,7 +94,7 @@ export const MachineLearningSettings = () => {
 
       const modalRef = modal(modalProps);
     },
-    [project, fetchBackends],
+    [project, fetchBackends]
   );
 
   useEffect(() => {
@@ -103,7 +111,10 @@ export const MachineLearningSettings = () => {
         </Typography>
         {loading && <Spinner size={32} />}
         {loaded && backends.length === 0 && (
-          <SimpleCard title="" className="bg-primary-background border-primary-border-subtler p-base">
+          <SimpleCard
+            title=""
+            className="bg-primary-background border-primary-border-subtler p-base"
+          >
             <EmptyState
               size="medium"
               variant="primary"
@@ -122,7 +133,11 @@ export const MachineLearningSettings = () => {
               }
               footer={
                 !window.APP_SETTINGS?.whitelabel_is_active && (
-                  <Typography variant="label" size="small" className="text-primary-link">
+                  <Typography
+                    variant="label"
+                    size="small"
+                    className="text-primary-link"
+                  >
                     <a
                       href="https://labelstud.io/guide/ml"
                       target="_blank"
@@ -151,20 +166,33 @@ export const MachineLearningSettings = () => {
         {backends.length > 0 && (
           <div className="my-wide">
             <Typography size="small" className="text-neutral-content-subtler">
-              A connected model has been detected! If you wish to fetch predictions from this model, please follow these
-              steps:
+              A connected model has been detected! If you wish to fetch
+              predictions from this model, please follow these steps:
             </Typography>
-            <Typography size="small" className="text-neutral-content-subtler mt-base">
+            <Typography
+              size="small"
+              className="text-neutral-content-subtler mt-base"
+            >
               1. Navigate to the <i>Data Manager</i>.
             </Typography>
-            <Typography size="small" className="text-neutral-content-subtler mt-tighter">
+            <Typography
+              size="small"
+              className="text-neutral-content-subtler mt-tighter"
+            >
               2. Select the desired tasks.
             </Typography>
-            <Typography size="small" className="text-neutral-content-subtler mt-tighter">
+            <Typography
+              size="small"
+              className="text-neutral-content-subtler mt-tighter"
+            >
               3. Click on <i>Batch predictions</i> from the <i>Actions</i> menu.
             </Typography>
-            <Typography size="small" className="text-neutral-content-subtler mt-base">
-              If you want to use the model predictions for prelabeling, please configure this in the{" "}
+            <Typography
+              size="small"
+              className="text-neutral-content-subtler mt-base"
+            >
+              If you want to use the model predictions for prelabeling, please
+              configure this in the{" "}
               <NavLink to="annotation" className="hover:underline">
                 Annotation settings
               </NavLink>
@@ -200,7 +228,12 @@ export const MachineLearningSettings = () => {
               <Form.Indicator>
                 <span case="success">Saved!</span>
               </Form.Indicator>
-              <Button type="submit" look="primary" className="w-[120px]" aria-label="Save machine learning settings">
+              <Button
+                type="submit"
+                look="primary"
+                className="w-[120px]"
+                aria-label="Save machine learning settings"
+              >
                 Save
               </Button>
             </Form.Actions>

@@ -1,4 +1,9 @@
-import { type PropsWithChildren, useCallback, useEffect, forwardRef } from "react";
+import {
+  type PropsWithChildren,
+  useCallback,
+  useEffect,
+  forwardRef,
+} from "react";
 import {
   ApiProvider as CoreApiProvider,
   createApiInstance,
@@ -14,7 +19,9 @@ import { FF_IMPROVE_GLOBAL_ERROR_MESSAGES, isFF } from "../utils/feature-flags";
 import { ToastType, useToast } from "@humansignal/ui";
 import { captureException } from "../config/Sentry";
 
-export const IMPROVE_GLOBAL_ERROR_MESSAGES = isFF(FF_IMPROVE_GLOBAL_ERROR_MESSAGES);
+export const IMPROVE_GLOBAL_ERROR_MESSAGES = isFF(
+  FF_IMPROVE_GLOBAL_ERROR_MESSAGES
+);
 // Duration for toast errors
 export const API_ERROR_TOAST_DURATION = 10000;
 
@@ -42,7 +49,8 @@ let apiLocked = false;
  * Displays an error modal with the error details.
  */
 const displayErrorModal = (errorDetails: FormattedError) => {
-  const { isShutdown, title, message, stacktrace, ...formattedError } = errorDetails;
+  const { isShutdown, title, message, stacktrace, ...formattedError } =
+    errorDetails;
 
   modal({
     unique: "network-error",
@@ -52,13 +60,23 @@ const displayErrorModal = (errorDetails: FormattedError) => {
         possum={false}
         title={"Connection refused"}
         message={"Server not responding. Is it still running?"}
+        errorId={undefined}
+        stacktrace={undefined}
+        validation={undefined}
+        version={undefined}
+        onGoBack={() => {}}
+        onReload={() => location.reload()}
       />
     ) : (
       <ErrorWrapper
-        {...formattedError}
         title={title}
         message={message}
+        errorId={undefined} // ✅ thêm dòng này
         stacktrace={IMPROVE_GLOBAL_ERROR_MESSAGES ? undefined : stacktrace}
+        validation={formattedError.validation}
+        version={formattedError.version}
+        onGoBack={() => {}}
+        onReload={() => location.reload()}
       />
     ),
     simple: true,
@@ -70,7 +88,10 @@ const displayErrorModal = (errorDetails: FormattedError) => {
  * Label Studio application-specific ApiProvider.
  * Wraps the core ApiProvider with Label Studio-specific error handling.
  */
-export const ApiProvider = forwardRef<ApiContextType, PropsWithChildren<Record<string, never>>>(({ children }, ref) => {
+export const ApiProvider = forwardRef<
+  ApiContextType,
+  PropsWithChildren<Record<string, never>>
+>(({ children }, ref) => {
   const toast = useToast();
 
   /**
@@ -81,23 +102,34 @@ export const ApiProvider = forwardRef<ApiContextType, PropsWithChildren<Record<s
    */
   const handleError = useCallback(
     (errorDetails: FormattedError, result: ApiResponse) => {
-      const status = result.$meta?.status;
-      const is4xx = status?.toString().startsWith("4");
-      const containsValidationErrors =
-        isDefined(result.response?.validation_errors) && Object.keys(result.response.validation_errors).length > 0;
+      // Lấy status từ mọi kiểu response có thể có
+      const status =
+        (result as any)?.$meta?.status ??
+        (result as any)?.meta?.status ??
+        (result as any)?.status;
 
-      // Log to Sentry for non-4xx or errors with stacktraces
-      if ((!is4xx || result.response?.exc_info) && result.error) {
-        captureException(new Error(result.error), {
+      const is4xx = status?.toString().startsWith("4");
+
+      // Lấy dữ liệu phản hồi từ result (tương thích cả data/response)
+      const responseData =
+        (result as any)?.response ?? (result as any)?.data ?? {};
+
+      const containsValidationErrors =
+        isDefined(responseData?.validation_errors) &&
+        Object.keys(responseData.validation_errors).length > 0;
+
+      // Log lên Sentry cho lỗi không phải 4xx hoặc có stacktrace server
+      if ((!is4xx || responseData?.exc_info) && (result as any)?.error) {
+        captureException(new Error((result as any).error), {
           extra: {
             status,
-            server_stacktrace: result.response?.exc_info,
-            server_version: result.response?.version,
+            server_stacktrace: responseData?.exc_info,
+            server_version: responseData?.version,
           },
         });
       }
 
-      // Show toast for 4xx without validation errors
+      // Hiển thị toast cho lỗi 4xx bình thường (không có validation)
       if (IMPROVE_GLOBAL_ERROR_MESSAGES && is4xx && !containsValidationErrors) {
         toast?.show({
           message: `${errorDetails.title}: ${errorDetails.message}`,
@@ -105,41 +137,48 @@ export const ApiProvider = forwardRef<ApiContextType, PropsWithChildren<Record<s
           duration: API_ERROR_TOAST_DURATION,
         });
       } else {
-        // Show modal for validation errors or non-4xx
+        // Các lỗi khác: mở modal chi tiết
         displayErrorModal(errorDetails);
       }
     },
-    [toast],
+    [toast]
   );
 
   /**
    * Handles fatal errors like 401 and 404.
    */
-  const handleFatalError = useCallback((errorDetails: FormattedError, result: ApiResponse) => {
-    if (apiLocked) return;
+  const handleFatalError = useCallback(
+    (errorDetails: FormattedError, result: ApiResponse) => {
+      if (apiLocked) return;
 
-    const status = result.$meta?.status;
+      const status =
+        (result as any)?.$meta?.status ?? (result as any)?.meta?.status;
 
-    // Handle 401 redirects
-    if (status === 401) {
-      apiLocked = true;
-      location.href = absoluteURL("/");
-      return;
-    }
-
-    // Handle 404 redirects with improved error messages
-    if (IMPROVE_GLOBAL_ERROR_MESSAGES && status === 404) {
-      apiLocked = true;
-      let redirectUrl = absoluteURL("/");
-
-      if (location.pathname.startsWith("/projects")) {
-        redirectUrl = absoluteURL("/projects");
+      // Handle 401 redirects
+      if (status === 401) {
+        apiLocked = true;
+        location.href = absoluteURL("/");
+        return;
       }
 
-      sessionStorage.setItem("redirectMessage", "The page or resource you were looking for does not exist.");
-      location.href = redirectUrl;
-    }
-  }, []);
+      // Handle 404 redirects with improved error messages
+      if (IMPROVE_GLOBAL_ERROR_MESSAGES && status === 404) {
+        apiLocked = true;
+        let redirectUrl = absoluteURL("/");
+
+        if (location.pathname.startsWith("/projects")) {
+          redirectUrl = absoluteURL("/projects");
+        }
+
+        sessionStorage.setItem(
+          "redirectMessage",
+          "The page or resource you were looking for does not exist."
+        );
+        location.href = redirectUrl;
+      }
+    },
+    []
+  );
 
   // Check for redirect messages on mount
   useEffect(() => {
@@ -155,7 +194,11 @@ export const ApiProvider = forwardRef<ApiContextType, PropsWithChildren<Record<s
   }, [toast]);
 
   return (
-    <CoreApiProvider ref={ref} onError={handleError} onFatalError={handleFatalError}>
+    <CoreApiProvider
+      ref={ref}
+      onError={handleError}
+      onFatalError={handleFatalError}
+    >
       {children}
     </CoreApiProvider>
   );
