@@ -1610,3 +1610,44 @@ class ProjectReimport(models.Model):
 
     def has_permission(self, user):
         return self.project.has_permission(user)
+    
+
+class Tool(models.Model):
+    name = models.CharField(
+        max_length=256,
+        default="Unnamed",
+        help_text="Name Tool"
+    )
+
+    project = models.ForeignKey(
+        'Project',
+        on_delete=models.CASCADE,
+        related_name='tools'
+    )
+
+    endpoint = models.URLField(
+        max_length=2048,
+        blank=False,
+        null=False,
+        help_text="Tool endpoint URL"
+    )
+
+    input_data = models.JSONField(
+        blank=True,
+        null=True,
+        default=dict,
+        help_text="Input Configuration for Tool"
+    )
+
+    output_data = models.JSONField(
+        blank=True,
+        null=True,
+        default=dict,
+        help_text="Output Configuration for Tool"
+    )
+
+    def __str__(self):  
+        return self.name
+    
+    class Meta:
+        ordering = ['id']

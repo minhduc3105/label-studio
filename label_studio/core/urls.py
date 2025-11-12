@@ -23,6 +23,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import path, re_path
 from django.views.generic.base import RedirectView
+from label_studio.projects.views import ToolViewSet
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularJSONAPIView,
@@ -30,6 +31,8 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
     SpectacularYAMLAPIView,
 )
+
+router = DefaultRouter(trailing_slass=False)
 
 urlpatterns = [
     re_path(r'^$', views.main, name='main'),
@@ -70,6 +73,7 @@ urlpatterns = [
     re_path(r'^', include('ml.urls')),
     re_path(r'^', include('webhooks.urls')),
     re_path(r'^', include('labels_manager.urls')),
+    re_path(r'^', include('projects.api_urls')),
     re_path(r'data/local-files/', views.localfiles_data, name='localfiles_data'),
     re_path(r'version/', views.version_page, name='version'),  # html page
     re_path(r'api/version/', views.version_page, name='api-version'),  # json response
