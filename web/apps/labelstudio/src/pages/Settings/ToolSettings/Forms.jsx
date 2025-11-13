@@ -9,12 +9,14 @@ import "./ToolSettings.scss";
 
 // (3) Export trực tiếp với tên ToolSettingsForm
 export const ToolSettingsForm = ({
-  action, // "createTool" hoặc "updateTool"
-  tool, // null (create) hoặc object (update)
+  action, // (NHẬN 'action' đã có tên đúng, ví dụ: 'tools_create' hoặc 'tools_partial_update')
+  tool,
   project,
   onSubmit, // Callback để đóng modal
 }) => {
   const api = useAPI();
+
+  // (File này KHÔNG HỀ BIẾT 'isEdit' là gì)
 
   // === QUẢN LÝ STATE CHO FORM NÀY ===
   const [name, setName] = useState("");
@@ -91,7 +93,6 @@ export const ToolSettingsForm = ({
   // === HÀM RENDER CHO TRƯỜNG ĐỘNG ===
   const renderFields = (fields, section) =>
     fields.map((field) => (
-      // (Chúng ta vẫn dùng Form.Row để giữ layout)
       <Form.Row key={field.id} columnCount={3} className="field-row">
         <Input
           name={`key-${field.id}`}
@@ -102,7 +103,6 @@ export const ToolSettingsForm = ({
             handleFieldChange(section, field.id, "key", e.target.value)
           }
         />
-
         <Input
           name={`value-${field.id}`}
           label="Value"
@@ -133,8 +133,8 @@ export const ToolSettingsForm = ({
           }}
           onMouseEnter={(e) => (e.currentTarget.style.color = "red")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "#aaa")}
-          aria-label="Xóa trường"
-          title="Xóa trường này"
+          aria-label="Delete"
+          title="Delete"
         >
           <IconTrash />
         </Button>
@@ -145,7 +145,7 @@ export const ToolSettingsForm = ({
     <Form.Row style={{ justifyContent: "flex-start" }}>
       <Button
         variant="text"
-        type="button" // (type="button" để chắc chắn nó không submit)
+        type="button"
         onClick={() => addField(section)}
         style={{
           color: "#888",
@@ -172,14 +172,13 @@ export const ToolSettingsForm = ({
 
   // === HÀM SUBMIT (GỌI API) ===
   const handleSubmit = useCallback(async () => {
-    // (Không dùng 'e' (event) ở đây)
-    // (Kiểm tra validation cơ bản)
+    // (XÓA: 'e.preventDefault()')
+    // (XÓA: 'const action = isEdit ? ...' <-- Dòng gây lỗi)
+
     if (!name || !endpoint) {
       alert("Name và Endpoint là bắt buộc.");
       return;
     }
-    // Dòng code MỚI (ĐÚNG)
-    const action = isEdit ? "tools_partial_update" : "tools_create";
 
     const payload = {
       name: name,
@@ -190,18 +189,19 @@ export const ToolSettingsForm = ({
     };
 
     try {
-      if (action === "updateTool") {
+      // (SỬA LỖI: Dùng 'action' (từ prop) và so sánh với tên đúng)
+      if (action === "api_tools_partial_update") {
         await api.callApi(action, { params: { pk: tool.id }, data: payload });
       } else {
+        // (action ở đây sẽ là 'tools_create')
         await api.callApi(action, { data: payload });
       }
       onSubmit(); // Gọi callback (để đóng modal và fetchTools)
     } catch (error) {
       console.error("Lỗi khi lưu Tool:", error);
-      // (Tùy chọn: hiển thị lỗi này cho người dùng)
     }
   }, [
-    action,
+    action, // (SỬA LỖI: Đảm bảo 'action' (prop) nằm trong dependencies)
     api,
     endpoint,
     inputFields,

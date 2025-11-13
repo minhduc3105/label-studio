@@ -20,7 +20,6 @@ export const ToolSettings = () => {
   const api = useAPI();
   const { project, fetchProject } = useContext(ProjectContext);
 
-  // === QUẢN LÝ STATE ===
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -34,8 +33,8 @@ export const ToolSettings = () => {
   const fetchTools = useCallback(async () => {
     setLoading(true);
     try {
-      // (SỬA LỖI: 'tools' -> 'tools_list')
-      const toolData = await api.callApi("tools_list", {
+      // (ĐÃ SỬA: Dùng tên thật 'api_tools_list')
+      const toolData = await api.callApi("api_tools_list", {
         params: { project: project.id },
       });
       setTools(toolData || []);
@@ -46,7 +45,6 @@ export const ToolSettings = () => {
     setLoaded(true);
   }, [api, project.id]);
 
-  // Tự động gọi fetchTools khi tải trang
   useEffect(() => {
     if (project.id) {
       fetchTools();
@@ -59,13 +57,13 @@ export const ToolSettings = () => {
       let modalRef;
       const isEdit = !!tool;
 
-      // (SỬA LỖI: Dùng nickname đúng của backend)
-      const action = isEdit ? "tools_partial_update" : "tools_create";
+      // (ĐÃ SỬA: Dùng tên thật)
+      const action = isEdit ? "api_tools_partial_update" : "api_tools_create";
       const title = isEdit ? "Edit Tool" : "Add New Tool";
 
       const handleSubmit = (response) => {
         modalRef?.close();
-        fetchTools(); // Tải lại danh sách sau khi lưu
+        fetchTools();
       };
 
       modalRef = modal({
@@ -74,7 +72,7 @@ export const ToolSettings = () => {
         closeOnClickOutside: false,
         body: (
           <ToolSettingsForm
-            action={action} // (action bây giờ là "tools_create" hoặc "tools_partial_update")
+            action={action}
             project={project}
             tool={tool}
             onSubmit={handleSubmit}
@@ -90,11 +88,11 @@ export const ToolSettings = () => {
     async (tool) => {
       if (confirm(`Are you sure you want to delete the tool "${tool.name}"?`)) {
         try {
-          // (SỬA LỖI: 'deleteTool' -> 'tools_destroy')
-          await api.callApi("tools_destroy", {
+          // (ĐÃ SỬA: Dùng tên thật 'api_tools_destroy')
+          await api.callApi("api_tools_destroy", {
             params: { pk: tool.id },
           });
-          fetchTools(); // Tải lại danh sách
+          fetchTools();
         } catch (e) {
           console.error("Failed to delete tool:", e);
         }
@@ -106,19 +104,14 @@ export const ToolSettings = () => {
   // === HÀM 4: CHẠY TOOL (RUN) ===
   const handleRunTool = useCallback(
     async (tool) => {
-      // (a) Đặt trạng thái "đang chạy"
-      setRunningTools((prev) => ({
-        ...prev,
-        [tool.id]: true,
-      }));
-
+      setRunningTools((prev) => ({ ...prev, [tool.id]: true }));
       try {
-        // (b) (SỬA LỖI: 'runTool' -> 'tools_run')
-        const result = await api.callApi("tools_run", {
+        // (SỬA LỖI CUỐI CÙNG: 'tools_run' -> 'api_tools_run_create')
+        const result = await api.callApi("api_tools_run_create", {
           params: { pk: tool.id },
+          data: {}, // (Gửi một body rỗng, vì API POST mong đợi nó)
         });
 
-        // (c) THÀNH CÔNG: Mở modal hiển thị kết quả
         modal({
           title: `Kết quả chạy Tool: ${tool.name}`,
           canClose: true,
@@ -140,7 +133,6 @@ export const ToolSettings = () => {
           ),
         });
       } catch (e) {
-        // (d) THẤT BẠI: Mở modal hiển thị lỗi
         modal({
           title: `Chạy Tool Thất bại: ${tool.name}`,
           canClose: true,
@@ -152,14 +144,10 @@ export const ToolSettings = () => {
           ),
         });
       } finally {
-        // (e) Xóa trạng thái "đang chạy"
-        setRunningTools((prev) => ({
-          ...prev,
-          [tool.id]: false,
-        }));
+        setRunningTools((prev) => ({ ...prev, [tool.id]: false }));
       }
     },
-    [api, modal] // (SỬA LỖI: Thêm 'modal' vào dependency array)
+    [api, modal]
   );
 
   // === PHẦN RENDER (JSX) ===
@@ -171,10 +159,8 @@ export const ToolSettings = () => {
           Tools
         </Typography>
 
-        {/* Trạng thái 1: Đang Tải Trang */}
         {loading && <Spinner size={32} />}
 
-        {/* Trạng thái 2: Đã Tải, không có dữ liệu */}
         {loaded && tools.length === 0 && (
           <SimpleCard
             title=""
@@ -200,7 +186,6 @@ export const ToolSettings = () => {
           </SimpleCard>
         )}
 
-        {/* Trạng thái 3: Đã Tải, có dữ liệu */}
         {loaded && tools.length > 0 && (
           <>
             <div style={{ textAlign: "right", marginBottom: "1rem" }}>
@@ -216,10 +201,10 @@ export const ToolSettings = () => {
 
             <ToolList
               tools={tools}
-              onEdit={showToolModal} // (Truyền hàm Sửa)
-              onDelete={handleDeleteTool} // (Truyền hàm Xóa)
-              onRunTool={handleRunTool} // (Truyền hàm Chạy)
-              runningTools={runningTools} // (Truyền state đang chạy)
+              onEdit={showToolModal}
+              onDelete={handleDeleteTool}
+              onRunTool={handleRunTool}
+              runningTools={runningTools}
             />
           </>
         )}
