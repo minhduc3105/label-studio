@@ -1,8 +1,16 @@
-# D:\ForStudy\label-studio\label_studio\tools\urls.py
-from rest_framework.routers import DefaultRouter
-from . import views # (Import views từ app "tools" này)
+"""This file and its contents are licensed under the Apache License 2.0."""
+from django.urls import path
+from .api import ToolListAPI, ToolAPI, ToolRunAPI
 
-router = DefaultRouter(trailing_slash=False)
-router.register(r'api/tools', views.ToolViewSet, basename='tools')
+app_name = 'tools'
 
-urlpatterns = router.urls
+urlpatterns = [
+    # List and Create tools
+    path('api/tools', ToolListAPI.as_view(), name='tool-list'),
+    
+    # Retrieve, Update, Delete tool
+    path('api/tools/<int:pk>', ToolAPI.as_view(), name='tool-detail'),
+    
+    # Run tool endpoint
+    path('api/tools/<int:pk>/run', ToolRunAPI.as_view(), name='tool-run'),
+]

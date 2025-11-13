@@ -29,27 +29,64 @@ export const ToolSettings = () => {
     createTitleFromSegments([project?.title, "Tool Settings"])
   );
 
+  // Helper lấy token/CSRF và build headers
+  const getCookie = (name) =>
+    document.cookie
+      .split("; ")
+      .find((v) => v.startsWith(name + "="))
+      ?.split("=")[1];
+
+  const buildAuthHeaders = () => {
+    const headers = { "Content-Type": "application/json" };
+    const token =
+      localStorage.getItem("access") || localStorage.getItem("token") || null;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    else {
+      const csrftoken = getCookie("csrftoken");
+      if (csrftoken) headers["X-CSRFToken"] = csrftoken;
+    }
+    return headers;
+  };
+
   // === HÀM 1: LẤY DANH SÁCH TOOL (FETCH) ===
   const fetchTools = useCallback(async () => {
     setLoading(true);
+
+    // Loại bỏ 'api' khỏi dependency vì không còn sử dụng api.callApi
+
     try {
-      // (ĐÃ SỬA: Dùng tên thật 'api_tools_list')
-      const toolData = await api.callApi("api_tools_list", {
-        params: { project: project.id },
+      // TẠO URL TRỰC TIẾP ĐẾN BACKEND
+      const url = `/api/tools?project=${encodeURIComponent(project.id)}`;
+
+      // GỌI API BẰNG FETCH (GET method mặc định)
+      const resp = await fetch(url, {
+        method: "GET", // Tường minh hóa method là GET
+        headers: buildAuthHeaders(),
       });
-      setTools(toolData || []);
+
+      // Xử lý lỗi HTTP (Đây là logic tối ưu hơn logic fallback cũ)
+      if (!resp.ok) {
+        let errorBody = await resp.text();
+        try {
+          errorBody = JSON.parse(errorBody);
+        } catch {}
+
+        console.error("HTTP Error fetching tools:", resp.status, errorBody);
+        throw new Error(`HTTP ${resp.status} - Failed to fetch tools`);
+      }
+
+      // Trả về dữ liệu JSON
+      const data = await resp.json();
+      setTools(data || []);
     } catch (e) {
-      console.error("Failed to fetch tools", e);
+      // Xử lý lỗi mạng hoặc lỗi HTTP đã được raise
+      console.error("Failed to fetch tools (Direct HTTP)", e);
+      setTools([]);
     }
+
     setLoading(false);
     setLoaded(true);
-  }, [api, project.id]);
-
-  useEffect(() => {
-    if (project.id) {
-      fetchTools();
-    }
-  }, [project.id, fetchTools]);
+  }, [project.id]);
 
   // === HÀM 2: MỞ MODAL (Thêm & Sửa) ===
   const showToolModal = useCallback(
@@ -57,12 +94,14 @@ export const ToolSettings = () => {
       let modalRef;
       const isEdit = !!tool;
 
-      // (ĐÃ SỬA: Dùng tên thật)
+      // BỎ BIẾN ACTION NÀY VÀ THAY BẰNG FLAG BOOLEAN (nếu form được sửa)
+      // Nếu form vẫn cần action string, chúng ta giữ nguyên tên:
       const action = isEdit ? "api_tools_partial_update" : "api_tools_create";
       const title = isEdit ? "Edit Tool" : "Add New Tool";
 
       const handleSubmit = (response) => {
         modalRef?.close();
+        // Sau khi tạo/sửa thành công, gọi lại hàm fetch Tools
         fetchTools();
       };
 
@@ -72,6 +111,7 @@ export const ToolSettings = () => {
         closeOnClickOutside: false,
         body: (
           <ToolSettingsForm
+            // VẪN TRUYỀN ACTION NÀY XUỐNG, GIẢ SỬ FORM VẪN CẦN NÓ ĐỂ XÁC ĐỊNH LÀ CREATE HAY UPDATE
             action={action}
             project={project}
             tool={tool}
@@ -80,25 +120,41 @@ export const ToolSettings = () => {
         ),
       });
     },
-    [project, fetchTools, api]
+    // SỬA ĐỔI: BỎ 'api' khỏi dependency array
+    [project, fetchTools]
   );
-
   // === HÀM 3: XÓA TOOL (DELETE) ===
   const handleDeleteTool = useCallback(
     async (tool) => {
       if (confirm(`Are you sure you want to delete the tool "${tool.name}"?`)) {
         try {
-          // (ĐÃ SỬA: Dùng tên thật 'api_tools_destroy')
-          await api.callApi("api_tools_destroy", {
-            params: { pk: tool.id },
+          // SỬA ĐỔI: CHỈ GIỮ LẠI LOGIC FETCH TRỰC TIẾP
+          const url = `/api/tools/${tool.id}`;
+          const resp = await fetch(url, {
+            method: "DELETE",
+            headers: buildAuthHeaders(),
           });
-          fetchTools();
+
+          // DRF trả về 204 No Content khi DELETE thành công, resp.ok vẫn là true
+          if (!resp.ok) {
+            // Xử lý lỗi chi tiết hơn nếu cần
+            let errorBody = await resp.text();
+            try {
+              errorBody = JSON.parse(errorBody);
+            } catch {}
+            console.error("HTTP Error deleting tool:", resp.status, errorBody);
+            throw new Error(`HTTP ${resp.status} - Failed to delete tool`);
+          }
+
+          fetchTools(); // Tải lại danh sách sau khi xóa
         } catch (e) {
           console.error("Failed to delete tool:", e);
+          // Bạn có thể hiển thị thông báo lỗi modal ở đây nếu muốn
         }
       }
     },
-    [api, fetchTools]
+    // SỬA ĐỔI: BỎ 'api' khỏi dependency array
+    [fetchTools]
   );
 
   // === HÀM 4: CHẠY TOOL (RUN) ===
@@ -106,18 +162,34 @@ export const ToolSettings = () => {
     async (tool) => {
       setRunningTools((prev) => ({ ...prev, [tool.id]: true }));
       try {
-        // (SỬA LỖI CUỐI CÙNG: 'tools_run' -> 'api_tools_run_create')
-        const result = await api.callApi("api_tools_run_create", {
-          params: { pk: tool.id },
-          data: {}, // (Gửi một body rỗng, vì API POST mong đợi nó)
+        let result;
+
+        // SỬA ĐỔI: CHỈ GIỮ LẠI LOGIC FETCH TRỰC TIẾP
+        const url = `/api/tools/${tool.id}/run`; // Endpoint POST tùy chỉnh
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: buildAuthHeaders(),
+          body: JSON.stringify(tool.input_data || {}), // Đảm bảo gửi body JSON
         });
 
+        if (!resp.ok) {
+          let errorBody = await resp.text();
+          try {
+            errorBody = JSON.parse(errorBody);
+          } catch {}
+          console.error("HTTP Error running tool:", resp.status, errorBody);
+          throw new Error(errorBody?.detail || `HTTP ${resp.status}`);
+        }
+
+        result = await resp.json();
+
+        // Hiển thị kết quả thành công
         modal({
-          title: `Kết quả chạy Tool: ${tool.name}`,
+          title: `Result Tool: ${tool.name}`,
           canClose: true,
           body: (
             <div>
-              <Label text="Kết quả thô từ Tool" large />
+              <Label text="Raw Label from Tool" large />
               <pre
                 style={{
                   background: "#f4f4f4",
@@ -133,6 +205,7 @@ export const ToolSettings = () => {
           ),
         });
       } catch (e) {
+        // Xử lý lỗi mạng hoặc lỗi HTTP
         modal({
           title: `Chạy Tool Thất bại: ${tool.name}`,
           canClose: true,
@@ -147,9 +220,16 @@ export const ToolSettings = () => {
         setRunningTools((prev) => ({ ...prev, [tool.id]: false }));
       }
     },
-    [api, modal]
+    // SỬA ĐỔI: BỎ 'api' khỏi dependency array
+    [modal, buildAuthHeaders]
   );
 
+  useEffect(() => {
+    // Chỉ gọi fetchTools nếu project đã có ID (đã được tải)
+    if (project?.id) {
+      fetchTools();
+    }
+  }, [project?.id, fetchTools]);
   // === PHẦN RENDER (JSX) ===
   // (Phần này đã đúng, không cần sửa)
   return (

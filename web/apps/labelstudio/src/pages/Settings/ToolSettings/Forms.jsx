@@ -172,9 +172,6 @@ export const ToolSettingsForm = ({
 
   // === HÀM SUBMIT (GỌI API) ===
   const handleSubmit = useCallback(async () => {
-    // (XÓA: 'e.preventDefault()')
-    // (XÓA: 'const action = isEdit ? ...' <-- Dòng gây lỗi)
-
     if (!name || !endpoint) {
       alert("Name và Endpoint là bắt buộc.");
       return;
@@ -188,21 +185,61 @@ export const ToolSettingsForm = ({
       output_data: fieldsToJson(outputFields),
     };
 
+    // Helper: lấy cookie (giữ nguyên, nhưng được đưa vào trong hàm để không cần dependency)
+    const getCookie = (name) =>
+      document.cookie
+        .split("; ")
+        .find((v) => v.startsWith(name + "="))
+        ?.split("=")[1];
+
     try {
-      // (SỬA LỖI: Dùng 'action' (từ prop) và so sánh với tên đúng)
-      if (action === "api_tools_partial_update") {
-        await api.callApi(action, { params: { pk: tool.id }, data: payload });
+      const isPatch = action === "api_tools_partial_update" && tool;
+      const url = isPatch ? `/api/tools/${tool.id}` : `/api/tools`;
+      const method = isPatch ? "PATCH" : "POST";
+
+      // Tái tạo logic headers từ khối catch cũ
+      const headers = { "Content-Type": "application/json" };
+      const token =
+        localStorage.getItem("access") || localStorage.getItem("token") || null;
+
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
       } else {
-        // (action ở đây sẽ là 'tools_create')
-        await api.callApi(action, { data: payload });
+        const csrftoken = getCookie("csrftoken");
+        if (csrftoken) headers["X-CSRFToken"] = csrftoken;
       }
-      onSubmit(); // Gọi callback (để đóng modal và fetchTools)
-    } catch (error) {
-      console.error("Lỗi khi lưu Tool:", error);
+
+      // GỌI API BẰNG FETCH TRỰC TIẾP
+      const resp = await fetch(url, {
+        method,
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+
+        // Xử lý lỗi cụ thể hơn để in ra console
+        let errorDetails = text;
+        try {
+          errorDetails = JSON.parse(text);
+        } catch {}
+
+        console.error("Lỗi HTTP khi lưu Tool:", resp.status, errorDetails);
+        throw new Error(`HTTP ${resp.status}: ${text}`);
+      }
+
+      // Đã lưu/cập nhật thành công
+      // const savedTool = await resp.json(); // Lấy đối tượng Tool đã lưu nếu cần
+      onSubmit();
+    } catch (err) {
+      // Xử lý lỗi từ fetch hoặc lỗi HTTP đã được raise
+      console.error("Lỗi khi lưu Tool:", err.message || err);
+      // Tùy chọn: Hiển thị thông báo lỗi thân thiện hơn cho người dùng
+      alert(`Lỗi khi lưu Tool. Vui lòng kiểm tra console.`);
     }
   }, [
-    action, // (SỬA LỖI: Đảm bảo 'action' (prop) nằm trong dependencies)
-    api,
+    action,
     endpoint,
     inputFields,
     name,

@@ -60,6 +60,13 @@ class AllPermissions(BaseModel):
     views_change: str = 'views.change'
     views_delete: str = 'views.delete'
 
+    # Tools permissions
+    tools_view: str = 'tools.view_tool'
+    tools_create: str = 'tools.add_tool'
+    tools_change: str = 'tools.change_tool'
+    tools_delete: str = 'tools.delete_tool'
+    
+
 
 all_permissions = AllPermissions()
 

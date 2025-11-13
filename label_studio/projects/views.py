@@ -6,12 +6,6 @@ import requests
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404
 
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.decorators import action
-from rest_framework.response import Response
-
 logger = logging.getLogger(__name__)
 
 
