@@ -1288,7 +1288,6 @@ class ProjectOnboarding(models.Model):
             self.project.skip_onboarding = True
             self.project.save(recalc=False)
 
-
 class LabelStreamHistory(models.Model):
 
     user = models.ForeignKey(
@@ -1310,7 +1309,6 @@ class ProjectMember(models.Model):
     enabled = models.BooleanField(default=True, help_text='Project member is enabled')
     created_at = models.DateTimeField(_('created at'), auto_now_add=True)
     updated_at = models.DateTimeField(_('updated at'), auto_now=True)
-
 
 class ProjectSummary(models.Model):
 
@@ -1554,7 +1552,6 @@ class ProjectSummary(models.Model):
         self.created_labels_drafts = labels
         self.save(update_fields=['created_labels_drafts'])
 
-
 class ProjectImport(models.Model):
     class Status(models.TextChoices):
         CREATED = 'created', _('Created')
@@ -1587,7 +1584,6 @@ class ProjectImport(models.Model):
     def has_permission(self, user):
         return self.project.has_permission(user)
 
-
 class ProjectReimport(models.Model):
     class Status(models.TextChoices):
         CREATED = 'created', _('Created')
@@ -1610,44 +1606,3 @@ class ProjectReimport(models.Model):
 
     def has_permission(self, user):
         return self.project.has_permission(user)
-    
-
-class Tool(models.Model):
-    name = models.CharField(
-        max_length=256,
-        default="Unnamed",
-        help_text="Name Tool"
-    )
-
-    project = models.ForeignKey(
-        'Project',
-        on_delete=models.CASCADE,
-        related_name='tools'
-    )
-
-    endpoint = models.URLField(
-        max_length=2048,
-        blank=False,
-        null=False,
-        help_text="Tool endpoint URL"
-    )
-
-    input_data = models.JSONField(
-        blank=True,
-        null=True,
-        default=dict,
-        help_text="Input Configuration for Tool"
-    )
-
-    output_data = models.JSONField(
-        blank=True,
-        null=True,
-        default=dict,
-        help_text="Output Configuration for Tool"
-    )
-
-    def __str__(self):  
-        return self.name
-    
-    class Meta:
-        ordering = ['id']

@@ -5,6 +5,7 @@ import {
   Spinner,
   EmptyState,
   SimpleCard,
+  Label,
 } from "@humansignal/ui";
 import { useUpdatePageTitle, createTitleFromSegments } from "@humansignal/core";
 import { modal } from "../../../components/Modal/Modal";
@@ -12,31 +13,32 @@ import { IconSettings } from "@humansignal/icons";
 import { useAPI } from "../../../providers/ApiProvider";
 import { ProjectContext } from "../../../providers/ProjectProvider";
 import { ToolSettingsForm } from "./Forms";
-import { ToolList } from "./ToolList"; // (Bạn sẽ cần tạo file này)
+import { ToolList } from "./ToolList";
 import "./ToolSettings.scss";
 
 export const ToolSettings = () => {
   const api = useAPI();
   const { project, fetchProject } = useContext(ProjectContext);
 
-  // Set state để quản lý trạng thái của trang
+  // === QUẢN LÝ STATE ===
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [runningTools, setRunningTools] = useState({});
 
   useUpdatePageTitle(
     createTitleFromSegments([project?.title, "Tool Settings"])
   );
 
-  // (5) THÊM: Hàm gọi API để lấy danh sách tools
+  // === HÀM 1: LẤY DANH SÁCH TOOL (FETCH) ===
   const fetchTools = useCallback(async () => {
     setLoading(true);
     try {
-      // Dùng `api.callApi` với 'tools' (tên chúng ta đã đăng ký ở backend)
-      const toolData = await api.callApi("tools", {
-        params: { project: project.id }, // Lọc theo project ID
+      // (SỬA LỖI: 'tools' -> 'tools_list')
+      const toolData = await api.callApi("tools_list", {
+        params: { project: project.id },
       });
-      setTools(toolData || []); // Đảm bảo 'tools' luôn là một mảng
+      setTools(toolData || []);
     } catch (e) {
       console.error("Failed to fetch tools", e);
     }
@@ -44,68 +46,124 @@ export const ToolSettings = () => {
     setLoaded(true);
   }, [api, project.id]);
 
-  // (6) THÊM: Tự động gọi fetchTools khi component được tải (mounted)
+  // Tự động gọi fetchTools khi tải trang
   useEffect(() => {
     if (project.id) {
       fetchTools();
     }
   }, [project.id, fetchTools]);
 
-  // (7) CẬP NHẬT: showToolModal để xử lý cả "Thêm" và "Sửa"
+  // === HÀM 2: MỞ MODAL (Thêm & Sửa) ===
   const showToolModal = useCallback(
     (tool = null) => {
-      // 'tool' có thể là null (Thêm) hoặc object (Sửa)
       let modalRef;
-
-      // Tự động xác định action và title
       const isEdit = !!tool;
-      const action = isEdit ? "updateTool" : "createTool";
+
+      // (SỬA LỖI: Dùng nickname đúng của backend)
+      const action = isEdit ? "tools_partial_update" : "tools_create";
       const title = isEdit ? "Edit Tool" : "Add New Tool";
 
-      // Cập nhật handleSubmit
       const handleSubmit = (response) => {
         modalRef?.close();
-        fetchTools(); // <-- QUAN TRỌNG: Tải lại danh sách tool, không phải fetchProject
+        fetchTools(); // Tải lại danh sách sau khi lưu
       };
 
-      // Tạo modal
       modalRef = modal({
-        title: title, // Dùng title động
+        title: title,
         style: { width: 760 },
         closeOnClickOutside: false,
         body: (
           <ToolSettingsForm
-            action={action} // Dùng action động
+            action={action} // (action bây giờ là "tools_create" hoặc "tools_partial_update")
             project={project}
-            tool={tool} // Truyền 'tool' (có thể là null) vào form
+            tool={tool}
             onSubmit={handleSubmit}
           />
         ),
       });
     },
-    [project, fetchTools, api] // Thêm 'fetchTools' và 'api' vào dependencies
+    [project, fetchTools, api]
   );
 
-  // (8) THÊM: Hàm xử lý xóa một tool
+  // === HÀM 3: XÓA TOOL (DELETE) ===
   const handleDeleteTool = useCallback(
     async (tool) => {
-      // Thêm xác nhận trước khi xóa
       if (confirm(`Are you sure you want to delete the tool "${tool.name}"?`)) {
         try {
-          // Gọi API 'deleteTool' (đã tự động tạo bởi ModelViewSet)
-          await api.callApi("deleteTool", {
-            params: { pk: tool.id }, // Gửi ID (pk) của tool cần xóa
+          // (SỬA LỖI: 'deleteTool' -> 'tools_destroy')
+          await api.callApi("tools_destroy", {
+            params: { pk: tool.id },
           });
-          fetchTools(); // Tải lại danh sách sau khi xóa thành công
+          fetchTools(); // Tải lại danh sách
         } catch (e) {
           console.error("Failed to delete tool:", e);
         }
       }
     },
-    [api, fetchTools] // Thêm dependencies
+    [api, fetchTools]
   );
 
-  // (9) CẬP NHẬT: Toàn bộ phần render để hiển thị theo trạng thái (loading, loaded, empty)
+  // === HÀM 4: CHẠY TOOL (RUN) ===
+  const handleRunTool = useCallback(
+    async (tool) => {
+      // (a) Đặt trạng thái "đang chạy"
+      setRunningTools((prev) => ({
+        ...prev,
+        [tool.id]: true,
+      }));
+
+      try {
+        // (b) (SỬA LỖI: 'runTool' -> 'tools_run')
+        const result = await api.callApi("tools_run", {
+          params: { pk: tool.id },
+        });
+
+        // (c) THÀNH CÔNG: Mở modal hiển thị kết quả
+        modal({
+          title: `Kết quả chạy Tool: ${tool.name}`,
+          canClose: true,
+          body: (
+            <div>
+              <Label text="Kết quả thô từ Tool" large />
+              <pre
+                style={{
+                  background: "#f4f4f4",
+                  padding: "1rem",
+                  borderRadius: "4px",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                }}
+              >
+                {JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          ),
+        });
+      } catch (e) {
+        // (d) THẤT BẠI: Mở modal hiển thị lỗi
+        modal({
+          title: `Chạy Tool Thất bại: ${tool.name}`,
+          canClose: true,
+          body: (
+            <div style={{ color: "red" }}>
+              <Label text="Lỗi" large />
+              <pre>{e.message || JSON.stringify(e, null, 2)}</pre>
+            </div>
+          ),
+        });
+      } finally {
+        // (e) Xóa trạng thái "đang chạy"
+        setRunningTools((prev) => ({
+          ...prev,
+          [tool.id]: false,
+        }));
+      }
+    },
+    [api, modal] // (SỬA LỖI: Thêm 'modal' vào dependency array)
+  );
+
+  // === PHẦN RENDER (JSX) ===
+  // (Phần này đã đúng, không cần sửa)
   return (
     <section>
       <div className="w-[42rem]">
@@ -113,7 +171,7 @@ export const ToolSettings = () => {
           Tools
         </Typography>
 
-        {/* Trạng thái 1: Đang Tải */}
+        {/* Trạng thái 1: Đang Tải Trang */}
         {loading && <Spinner size={32} />}
 
         {/* Trạng thái 2: Đã Tải, không có dữ liệu */}
@@ -145,7 +203,6 @@ export const ToolSettings = () => {
         {/* Trạng thái 3: Đã Tải, có dữ liệu */}
         {loaded && tools.length > 0 && (
           <>
-            {/* Nút "Add Tool" ở trên cùng (khi đã có danh sách) */}
             <div style={{ textAlign: "right", marginBottom: "1rem" }}>
               <Button
                 variant="primary"
@@ -157,11 +214,12 @@ export const ToolSettings = () => {
               </Button>
             </div>
 
-            {/* Component ToolList để render danh sách */}
             <ToolList
               tools={tools}
-              onEdit={showToolModal}
-              onDelete={handleDeleteTool}
+              onEdit={showToolModal} // (Truyền hàm Sửa)
+              onDelete={handleDeleteTool} // (Truyền hàm Xóa)
+              onRunTool={handleRunTool} // (Truyền hàm Chạy)
+              runningTools={runningTools} // (Truyền state đang chạy)
             />
           </>
         )}

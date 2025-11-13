@@ -1,24 +1,24 @@
-// (1) THÊM: import 'useEffect' và 'useAPI'
+// (GHI CHÚ: File này có thể là 'Forms.js' hoặc 'ToolSettingsForm.jsx')
+
 import { useState, useCallback, useEffect } from "react";
 import { IconTrash } from "@humansignal/icons";
-import { Button } from "@humansignal/ui";
-import { Form, Input, Label } from "../../../components/Form";
-// (2) XÓA: 'Select' không còn được dùng, chúng ta sẽ làm nhất quán key/value
-// import { Select } from "../../../components/Form";
-import { useAPI } from "../../../providers/ApiProvider"; // (1) THÊM
+import { Button, Label } from "@humansignal/ui"; // (1) Đảm bảo Label đã được import
+import { Form, Input } from "../../../components/Form"; // (2) Chúng ta chỉ dùng Form.Row và Input từ đây
+import { useAPI } from "../../../providers/ApiProvider";
 import "./ToolSettings.scss";
 
-// (3) SỬA: Props
-// Bỏ 'backend', thêm 'tool' (có thể là null)
-const ToolSettingsForm = ({ action, tool, project, onSubmit }) => {
-  const api = useAPI(); // (4) THÊM: Lấy API provider
+// (3) Export trực tiếp với tên ToolSettingsForm
+export const ToolSettingsForm = ({
+  action, // "createTool" hoặc "updateTool"
+  tool, // null (create) hoặc object (update)
+  project,
+  onSubmit, // Callback để đóng modal
+}) => {
+  const api = useAPI();
 
-  // (5) THÊM: State cho các trường chính (để kiểm soát form)
+  // === QUẢN LÝ STATE CHO FORM NÀY ===
   const [name, setName] = useState("");
   const [endpoint, setEndpoint] = useState("");
-
-  // (6) SỬA: State cho các trường động
-  // Chúng ta sẽ làm nhất quán: cả input và output đều là (key, value)
   const [inputFields, setInputFields] = useState([
     { id: Date.now(), key: "", value: "" },
   ]);
@@ -26,60 +26,56 @@ const ToolSettingsForm = ({ action, tool, project, onSubmit }) => {
     { id: Date.now() + 1, key: "", value: "" },
   ]);
 
-  // (7) THÊM: Helper Functions (Hàm hỗ trợ)
-  // Chuyển đổi từ JSON {a: 'b'} sang array [{id: 1, key: 'a', value: 'b'}]
+  // === CÁC HÀM HỖ TRỢ (HELPER) ===
   const jsonToFields = (json) => {
     if (!json || typeof json !== "object")
       return [{ id: Date.now(), key: "", value: "" }];
     const fields = Object.entries(json).map(([key, value], i) => ({
       id: Date.now() + i,
       key,
-      value: String(value), // Luôn chuyển sang string để <Input> hiển thị
+      value: String(value),
     }));
     return fields.length ? fields : [{ id: Date.now(), key: "", value: "" }];
   };
 
-  // Chuyển đổi từ array [{key: 'a', value: 'b'}] sang JSON {a: 'b'}
   const fieldsToJson = (fields) => {
     return fields.reduce((acc, field) => {
-      if (field.key) acc[field.key] = field.value; // Chỉ thêm nếu có key
+      if (field.key) acc[field.key] = field.value;
       return acc;
     }, {});
   };
 
-  // (8) THÊM: useEffect để điền dữ liệu khi ở chế độ "Edit" (Sửa)
+  // === EFFECT: ĐIỀN DỮ LIỆU KHI "EDIT" ===
   useEffect(() => {
     if (tool) {
-      // Chế độ "Edit": Điền dữ liệu từ 'tool'
+      // Chế độ "Edit"
       setName(tool.name || "");
       setEndpoint(tool.endpoint || "");
       setInputFields(jsonToFields(tool.input_data));
       setOutputFields(jsonToFields(tool.output_data));
     } else {
-      // Chế độ "Create" (Thêm): Reset form về rỗng
+      // Chế độ "Create"
       setName("");
       setEndpoint("");
       setInputFields([{ id: Date.now(), key: "", value: "" }]);
       setOutputFields([{ id: Date.now() + 1, key: "", value: "" }]);
     }
-  }, [tool]); // Chạy lại khi 'tool' thay đổi
+  }, [tool]);
 
-  // (9) SỬA: Logic thêm/xóa trường
+  // === CÁC HÀM XỬ LÝ (HANDLER) CHO TRƯỜNG ĐỘNG ===
   const addField = useCallback((section) => {
-    const newField = { id: Date.now(), key: "", value: "" }; // Sửa thành key/value
+    const newField = { id: Date.now(), key: "", value: "" };
     if (section === "input") setInputFields((prev) => [...prev, newField]);
     if (section === "output") setOutputFields((prev) => [...prev, newField]);
   }, []);
 
   const removeField = useCallback((section, id) => {
-    // Giữ lại logic cũ của bạn (đã đúng)
     if (section === "input")
       setInputFields((prev) => prev.filter((f) => f.id !== id));
     if (section === "output")
       setOutputFields((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
-  // (10) THÊM: Hàm xử lý thay đổi cho các trường động
   const handleFieldChange = useCallback(
     (section, id, fieldName, fieldValue) => {
       const setter = section === "input" ? setInputFields : setOutputFields;
@@ -92,33 +88,30 @@ const ToolSettingsForm = ({ action, tool, project, onSubmit }) => {
     []
   );
 
-  // (11) SỬA: Hàm renderFields
-  // Làm cho cả 'input' và 'output' nhất quán (key, value)
+  // === HÀM RENDER CHO TRƯỜNG ĐỘNG ===
   const renderFields = (fields, section) =>
     fields.map((field) => (
+      // (Chúng ta vẫn dùng Form.Row để giữ layout)
       <Form.Row key={field.id} columnCount={3} className="field-row">
-        {/* Field 1: Key (Tên biến) */}
         <Input
           name={`key-${field.id}`}
-          label="Key (Tên)"
+          label="Key"
           placeholder="e.g., alpha"
-          value={field.key} // Kiểm soát component
+          value={field.key}
           onChange={(e) =>
             handleFieldChange(section, field.id, "key", e.target.value)
           }
         />
-        {/* Field 2: Value (Giá trị) */}
+
         <Input
           name={`value-${field.id}`}
-          label="Value (Giá trị)"
+          label="Value"
           placeholder="e.g., 0.5"
-          value={field.value} // Kiểm soát component
+          value={field.value}
           onChange={(e) =>
             handleFieldChange(section, field.id, "value", e.target.value)
           }
         />
-
-        {/* Nút Xóa (Giữ nguyên logic của bạn) */}
         <Button
           variant="text"
           onClick={() => removeField(section, field.id)}
@@ -148,12 +141,11 @@ const ToolSettingsForm = ({ action, tool, project, onSubmit }) => {
       </Form.Row>
     ));
 
-  // (12) Giữ nguyên: Nút 'Thêm trường' (đã đúng)
   const renderAddButton = (section) => (
-    <Form.Row /* ... (code của bạn giữ nguyên) ... */>
+    <Form.Row style={{ justifyContent: "flex-start" }}>
       <Button
         variant="text"
-        type="button"
+        type="button" // (type="button" để chắc chắn nó không submit)
         onClick={() => addField(section)}
         style={{
           color: "#888",
@@ -178,102 +170,98 @@ const ToolSettingsForm = ({ action, tool, project, onSubmit }) => {
     </Form.Row>
   );
 
-  // (13) SỬA: Hàm handleSubmit (để gọi API)
-  const handleSubmit = useCallback(
-    async (e) => {
-      e.preventDefault(); // Ngăn form submit theo cách truyền thống
+  // === HÀM SUBMIT (GỌI API) ===
+  const handleSubmit = useCallback(async () => {
+    // (Không dùng 'e' (event) ở đây)
+    // (Kiểm tra validation cơ bản)
+    if (!name || !endpoint) {
+      alert("Name và Endpoint là bắt buộc.");
+      return;
+    }
+    // Dòng code MỚI (ĐÚNG)
+    const action = isEdit ? "tools_partial_update" : "tools_create";
 
-      // Chuẩn bị payload để gửi
-      const payload = {
-        name: name,
-        endpoint: endpoint,
-        project: project.id,
-        input_data: fieldsToJson(inputFields),
-        output_data: fieldsToJson(outputFields),
-      };
+    const payload = {
+      name: name,
+      endpoint: endpoint,
+      project: project.id,
+      input_data: fieldsToJson(inputFields),
+      output_data: fieldsToJson(outputFields),
+    };
 
-      try {
-        if (action === "updateTool") {
-          // Chế độ "Sửa": Gọi API 'updateTool' với 'pk'
-          await api.callApi(action, { params: { pk: tool.id }, data: payload });
-        } else {
-          // Chế độ "Thêm": Gọi API 'createTool'
-          await api.callApi(action, { data: payload });
-        }
-
-        // (14) THÀNH CÔNG: Gọi callback 'onSubmit'
-        // (Callback này sẽ đóng modal và fetchTools() như được định nghĩa trong ToolSettings.jsx)
-        onSubmit();
-      } catch (error) {
-        console.error("Lỗi khi lưu Tool:", error);
-        // (Tùy chọn: hiển thị lỗi này cho người dùng)
+    try {
+      if (action === "updateTool") {
+        await api.callApi(action, { params: { pk: tool.id }, data: payload });
+      } else {
+        await api.callApi(action, { data: payload });
       }
-    },
-    // (15) THÊM: Dependencies
-    // Thêm tất cả các state và prop liên quan
-    [
-      action,
-      api,
-      endpoint,
-      inputFields,
-      name,
-      onSubmit,
-      outputFields,
-      project.id,
-      tool,
-    ]
-  );
+      onSubmit(); // Gọi callback (để đóng modal và fetchTools)
+    } catch (error) {
+      console.error("Lỗi khi lưu Tool:", error);
+      // (Tùy chọn: hiển thị lỗi này cho người dùng)
+    }
+  }, [
+    action,
+    api,
+    endpoint,
+    inputFields,
+    name,
+    onSubmit,
+    outputFields,
+    project.id,
+    tool,
+  ]);
 
-  // (16) SỬA: JSX của form
-  // Chúng ta cần kiểm soát các trường chính
+  // === PHẦN RENDER (JSX) ===
+  // (SỬA LỖI: Thay <Form> bằng <div> và <Button type="submit"> bằng <Button onClick={...}>)
   return (
-    <Form onSubmit={handleSubmit}>
-      <Input type="hidden" name="project" value={project.id} />
-
+    <div className="custom-tool-form">
       <Form.Row columnCount={1}>
         <Input
-          name="name" // (Sửa: 'title' -> 'name' cho nhất quán với model)
+          name="name"
           label="Name"
           placeholder="Enter a name"
           required
-          value={name} // Kiểm soát component
-          onChange={(e) => setName(e.target.value)} // Cập nhật state
+          value={name}
+          onChange={(e) => setName(e.target.value)}
         />
       </Form.Row>
 
       <Form.Row columnCount={1}>
         <Input
-          name="endpoint" // (Sửa: 'url' -> 'endpoint')
+          name="endpoint"
           label="Backend URL (Endpoint)"
           required
-          value={endpoint} // Kiểm soát component
-          onChange={(e) => setEndpoint(e.target.value)} // Cập nhật state
+          value={endpoint}
+          onChange={(e) => setEndpoint(e.target.value)}
         />
       </Form.Row>
 
-      {/* Input Fields */}
       <Form.Row columnCount={1}>
         <Label text="Input Configuration (Key / Value)" large />
       </Form.Row>
       {renderFields(inputFields, "input")}
       {renderAddButton("input")}
 
-      {/* Output Fields */}
       <Form.Row columnCount={1}>
         <Label text="Output Configuration (Key / Value)" large />
       </Form.Row>
       {renderFields(outputFields, "output")}
       {renderAddButton("output")}
 
-      {/* Submit */}
-      <Form.Row columnCount={1}>
-        <Button variant="primary" type="submit">
-          {/* (17) SỬA: Tên nút động */}
+      {/* Nút Submit */}
+      <Form.Row
+        columnCount={1}
+        style={{ marginTop: "1rem", justifyContent: "flex-end" }}
+      >
+        <Button
+          variant="primary"
+          onClick={handleSubmit} // (SỬA LỖI QUAN TRỌNG NHẤT)
+          aria-label={tool ? "Save Changes" : "Add Tool"}
+        >
           {tool ? "Save Changes" : "Add Tool"}
         </Button>
       </Form.Row>
-    </Form>
+    </div>
   );
 };
-
-export { ToolSettingsForm };
