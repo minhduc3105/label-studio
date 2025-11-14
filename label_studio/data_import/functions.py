@@ -250,7 +250,6 @@ def convert_label_column_to_label(tasks, project, user):
             )
             return tasks
         
-        # SỬA LỖI: Sửa 'infor' thành 'info'
         logger.info(f"Bảng ánh xạ dựa trên THỨ TỰ được xây dựng: {choice_list}")
 
     except ET.ParseError as e:
@@ -259,6 +258,8 @@ def convert_label_column_to_label(tasks, project, user):
     except Exception as e:
         logger.error(f"Lỗi không xác định khi phân tích Label Config: {e}. Bỏ qua.", exc_info=True)
         return tasks
+    
+    valid_choice_lower = {c.lower() for c in choice_list}
     
     # --- 2. Lặp qua các Task để gán trường 'sentiment' tạm thời ---
     tasks_to_reformat = []
@@ -273,30 +274,38 @@ def convert_label_column_to_label(tasks, project, user):
         if label_value is None or str(label_value).strip() == '' or str(label_value).strip().lower() == 'null':
             tasks_to_reformat.append(task)
             continue
-        
-        try:
-            label_int = int(label_value)
+
+        sentiment_string =None
+        input_label_str = str(label_value).strip()
+        input_label_lower = input_label_str.lower()
+
+        if input_label_lower in valid_choice_lower:
+            sentiment_string = input_label_str
+        else:
+            try:
+                label_int = int(label_value)
+                target_index = label_int
+                if 0 <= target_index < len(choice_list):
+                    sentiment_string = choice_list[target_index]
+                    logger.warning(
+                        f"Label value {label_value} is not valid string choice"
+                        f"using index {target_index} to labeling"
+                    )
+                else:
+                    logger.warning(
+                        f"Label value {label_value} is not a valid string choice in range. Skipping"
+                    )
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Label value {label_value} matches no Choices Value and is not an interget(index)"
+                    f"Skipping this task"
+                )
+        if sentiment_string:
+            if 'data' not in task:
+                task = {'data': task}
             
-            target_index = label_int
-            
-            if 0 <= target_index < len(choice_list):
-                sentiment_string = choice_list[target_index]
-                
-                if 'data' not in task:
-                    task = {'data': task}
-                
-                task['data'][choice_tag_name] = sentiment_string
-            else: 
-                logger.warning(f"Label index {label_int} out of range for task. Passing through.")
-            
-            # Dù thành công hay không (ví dụ: index ngoài phạm vi), vẫn append task
-            tasks_to_reformat.append(task)
-        
-        # SỬA LỖI: Bắt thêm 'TypeError' (ví dụ: int(None) nếu logic ở trên bị sai)
-        except (ValueError, TypeError):
-            # Nếu label_value là "abc", nó sẽ bị lỗi và nhảy vào đây
-            logger.warning(f"Giá trị label '{label_value}' không phải là số nguyên. Bỏ qua.")
-            tasks_to_reformat.append(task)
+            task['data'][choice_tag_name] =sentiment_string
+        tasks_to_reformat.append(task)        
 
     # --- 3. SỬA LỖI 4: THÊM PHẦN BỊ THIẾU ---
     
