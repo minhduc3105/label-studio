@@ -323,14 +323,6 @@ def convert_label_column_to_label(tasks, project, user):
                 ann.pop('score', None)
                 ann.pop('model_version', None)
                 ann['completed_by'] = user.id
-        
-        # Thêm code debug (in 5 task đầu tiên)
-        if i < 5: 
-            logger.info(f"--- Cấu trúc Task #{i} (Sau khi xử lý) ---")
-            try:
-                logger.info(json.dumps(task, indent=2, ensure_ascii=False))
-            except Exception:
-                logger.info(task) # In ra kiểu thô nếu lỗi json
 
         final_tasks.append(task)
             

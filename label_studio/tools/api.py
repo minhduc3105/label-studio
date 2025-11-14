@@ -2,6 +2,7 @@
 """
 import logging
 import requests
+import xml.etree.ElementTree as ET
 from django.utils.decorators import method_decorator
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
@@ -15,7 +16,8 @@ import json
 import tempfile
 import os
 import time
-from tasks.models import Task
+from tasks.models import Task, Annotation
+ 
 
 # Removed: from core.permissions import ViewClassPermission, all_permissions
 # Removed: from core.mixins import GetParentObjectMixin
@@ -24,6 +26,16 @@ from .models import Tool
 from .serializers import ToolSerializer
 
 logger = logging.getLogger(__name__)
+
+
+VALID_CONTROL_TAGS = {
+    "labels", "hypertextlabels", "paragraphlabels", "rectangle", "keypoint", 
+    "polygon", "brush", "bitmask", "ellipse", "magicwand", "rectanglelabels", 
+    "keypointlabels", "polygonlabels", "vector", "vectorlabels", "brushlabels", 
+    "bitmasklabels", "ellipselabels", "timeserieslabels", "timelinelabels", 
+    "choices", "datetime", "number", "taxonomy", "textarea", "rating", 
+    "pairwise", "videorectangle", "ranker", "custominterface"
+    }
 
 
 @method_decorator(
@@ -396,10 +408,140 @@ class ToolRunAPI(generics.GenericAPIView):
         # nó sẽ không kích hoạt api_permissions.py
 
         return obj
+    
+
+    
+    def _get_labeling_config_details(self, project):
+        try:
+            label_project_xml = project.label_config
+            root = ET.fromstring(label_project_xml)
+
+            control_tag = root.find(".//*[@toName]")
+
+            if control_tag is not None:
+                from_name = control_tag.attrib.get("name")
+                to_name = control_tag.attrib.get("toName")
+                tag_type = control_tag.tag.lower()
+
+                if tag_type not in VALID_CONTROL_TAGS:
+                    logger.warring(
+                        f"Found tag <{control_tag.tag}> but its type "
+                        f"is not a recognized control tag for project {project.id}"
+
+                    )
+                    return None, None, None, None
+                
+                valid_choices = []
+                child_tag_name = ""
+
+                if tag_type == "choices":
+                    child_tag_name = "Choice"
+                elif tag_type in ("labels", "hypertextlabels", "paragraphlabels"):
+                    child_tag_name = "Label"
+
+                if child_tag_name:
+                    for choice_elem in control_tag.findall(child_tag_name):
+                        value = choice_elem.attrib.get("value")
+
+                        if value:
+                            valid_choices.append(value)
+                    logger.info(f"Found valid choices for <{tag_type}>: {valid_choices}")
+
+                if from_name and to_name:
+                    return from_name, to_name, tag_type, valid_choices
+
+            logger.warning(f"Could not find a valid <Choices> tag in project {project_id}")
+            return None, None, None, None
+        except Exception as e:
+            logger.error(f"Error parsing label config for project {project.id}: {str(e)}")
+            return None, None, None, None
+
+
+    
+    def update_tasks_with_labels(self, api_response, project, user):
+        
+        from_name, to_name, tag_type, valid_choices = self._get_labeling_config_details(project)
+        
+        if not from_name:
+            logger.error(f"Cannot auto-label project {project.id}: config details not found")
+            return {"error": "Labeling config mismatch or missing <Choices> tag."}
+        
+        needs_validation = tag_type in ("choices", "labels", "taxonomy", "hypertextlabels", "paragraphlabels")
+
+        if needs_validation and not valid_choices:
+            logger.warning(
+                f"Project {project.id} uses <{tag_type}> but no valid <Choice>/<Label> "
+                f"values were found in config. Auto-labeling may fail validation."
+            )
+        
+        items_to_label = api_response.get("data", [])
+        if not items_to_label:
+            logger.error(f"No data found in API response to label.")
+            return {"updated": 0, "failed": [], "error": "No data in response"}
+        
+        updated_count = 0
+        failed_ids = []
+
+        for item in items_to_label:
+            task_id = item.get("id")
+            label = item.get("label")
+
+            if not task_id or not label:
+                logger.warring(f"Skipping item, missing id or label: {item}")
+                continue
+
+            if needs_validation and label not in valid_choices:
+                logger.warning(
+                    f"Skipping task {task_id}: API label '{label}' is not a valid "
+                    f"choice in project config. Valid choices are: {valid_choices}"
+                )
+                failed_ids.append({"id": task_id, "label": label, "reason": "Invalid label value"})
+                continue
+            try:
+                task = Task.objects.get(id=task_id, project=project)
+
+                result_json = [
+                    {
+                        "from_name": from_name,
+                        "to_name": to_name,
+                        "type": tag_type,
+                        "value": {
+                            tag_type: [label]
+                        }
+                    }
+                ]
+
+                Annotation.objects.update_or_create(
+                    task=task, 
+                    completed_by=user,
+                    project=project,
+                    defaults={
+                        'result': result_json,
+                        'was_cancelled': False
+                    }
+                )
+
+                updated_count +=1
+            except Task.DoesNotExist:
+                logger.warning(f"Task with id {task_id} not found in project {project.id}")
+                failed_ids.append(task_id)
+            except Exception as e:
+                logger.error(f"Failed to create annotation for task {task_id}: {str(e)}")
+            
+            summary = {
+                "updated": updated_count,
+                "failed_ids": failed_ids,
+                "total_processed": len(items_to_label)
+            }
+
+            logger.info(f"Auto-labeling summary for project {project.id}: {summary}")
+
+        return summary
+
+
 
     def post(self, request, *args, **kwargs):
         tool = self.get_object() 
-        print(tool.project)
         project = tool.project
 
         try:
@@ -415,24 +557,6 @@ class ToolRunAPI(generics.GenericAPIView):
 
             # Thêm headers và error handling tốt hơn
             headers = {'Content-Type': 'application/json'}
-
-            # =============== PHẦN DEBUG BẠN CẦN THÊM ===============
-            
-            print(f"DEBUG: 🚀 Gửi request đến URL:")
-            print(f"{endpoint_url}\n")
-            
-            print(f"DEBUG: 📋 Với HEADERS:")
-            print(f"{headers}\n")
-
-            print(f"DEBUG: 📦 Với PAYLOAD (JSON BODY):")
-            # Dùng json.dumps(..., indent=2) để in JSON ra cho dễ đọc
-            try:
-                print(f"{json.dumps(payload, indent=2, ensure_ascii=False)}\n")
-            except TypeError: # Đề phòng payload không thể serialize
-                print(f"{payload}\n")
-            
-            print("======================================================")
-            # ==========================================================
             
             logger.info(f'Calling tool {tool.id} endpoint: {endpoint_url}')
             print(endpoint_url)
@@ -452,6 +576,22 @@ class ToolRunAPI(generics.GenericAPIView):
                 external_output = resp.text
 
             normalized = self._map_external_to_response(external_output, payload)
+
+            if isinstance(external_output, dict):
+                update_summary = self.update_tasks_with_labels(
+                    external_output, 
+                    project, 
+                    request.user
+                )
+                logger.info(f"Auto-labeling sumary: {update_summary}")
+            else:
+                logger.waring(f"External output is not a dict, cannot auto-label")
+                update_summary = {"error": "Invalid putput format from tool"}
+
+            if isinstance(normalized, list):
+                normalized['auto_label_summary'] = update_summary
+                
+
             logger.debug(f'Tool {tool.id} executed successfully.')
             return Response(normalized, status=status.HTTP_200_OK)
 

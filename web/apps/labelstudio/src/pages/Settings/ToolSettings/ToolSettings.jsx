@@ -185,7 +185,7 @@ export const ToolSettings = () => {
 
         // Hiển thị kết quả thành công
         modal({
-          title: `Result Tool: ${tool.name}`,
+          title: `Sucessfull running: ${tool.name}`,
           canClose: true,
           body: (
             <div>
