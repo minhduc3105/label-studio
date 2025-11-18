@@ -359,7 +359,13 @@ export const LabelButton = injector(
 
     // ... (secondStyle và selectedCount giữ nguyên) ...
     const secondStyle = {
-      /* ... */
+      width: triggerStyle.width + primaryStyle.width,
+      padding: 0,
+      display: isOpen ? "flex" : "none",
+      position: "absolute",
+      zIndex: 10,
+      borderTopLeftRadius: 0,
+      borderTopRightRadius: 0,
     };
     selectedCount;
 
@@ -377,7 +383,7 @@ export const LabelButton = injector(
               onClick={onLabelAll}
             >
               Label {selectedCount ? selectedCount : "All"} Task
-              {!selectedCount || selectedCount > 1 ? "s" : ""}
+              {!selectedCount || selectedCount > 1 ? "s" : "s"}
             </Button>
             <Dropdown.Trigger
               align="bottom-right"
