@@ -178,7 +178,7 @@ export const Menubar = ({
                   color: "#888",
                 }}
               >
-                Developed by ISE
+                Integration by iSE Research Lab
               </span>
               <Hamburger opened={sidebarOpened} />
             </div>

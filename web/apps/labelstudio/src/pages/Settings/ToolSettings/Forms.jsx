@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { IconTrash } from "@humansignal/icons";
-import { Button, Label } from "@humansignal/ui"; // (1) Đảm bảo Label đã được import
-import { Form, Input } from "../../../components/Form"; // (2) Chúng ta chỉ dùng Form.Row và Input từ đây
+import { Button, Label, Typography } from "@humansignal/ui"; // Added Typography for better text
+import { Form, Input } from "../../../components/Form";
 import { useAPI } from "../../../providers/ApiProvider";
 import "./ToolSettings.scss";
 
@@ -56,11 +56,20 @@ export const ToolSettingsForm = ({
       setInputFields(jsonToFields(tool.input_data));
       setOutputFields(jsonToFields(tool.output_data));
     } else {
-      // Chế độ "Create"
+      // Chế độ "Create" - Auto-fill with default values
       setName("");
       setEndpoint("");
-      setInputFields([{ id: Date.now(), key: "", value: "" }]);
-      setOutputFields([{ id: Date.now() + 1, key: "", value: "" }]);
+      // Default input configuration
+      const defaultInputFields = [
+        { id: Date.now() + 1, key: "alpha", value: "0.4" },
+        { id: Date.now() + 2, key: "num_epoch", value: "6" },
+        { id: Date.now() + 3, key: "num_lfs_each", value: "4" },
+        { id: Date.now() + 4, key: "hf_model", value: "bert-base-cased" },
+        { id: Date.now() + 5, key: "api_key", value: "AIzaSyDrfS8dr2zW67_h9eHqIbcelyHNrnWBWWQ" },
+      ];
+      setInputFields(defaultInputFields);
+      // Default output configuration (empty)
+      setOutputFields([{ id: Date.now() + 100, key: "", value: "" }]);
     }
   }, [tool]);
 
@@ -250,51 +259,89 @@ export const ToolSettingsForm = ({
   ]);
 
   // === PHẦN RENDER (JSX) ===
-  // (SỬA LỖI: Thay <Form> bằng <div> và <Button type="submit"> bằng <Button onClick={...}>)
   return (
-    <div className="custom-tool-form">
-      <Form.Row columnCount={1}>
+    <div className="custom-tool-form" style={{ padding: "1.5rem 0" }}>
+      {/* Name Field */}
+      <Form.Row columnCount={1} style={{ marginBottom: "1.5rem" }}>
         <Input
           name="name"
-          label="Name"
-          placeholder="Enter a name"
+          label="Tool Name"
+          placeholder="e.g., AG News Classification"
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
+          style={{ fontSize: "14px" }}
         />
       </Form.Row>
 
-      <Form.Row columnCount={1}>
+      {/* Endpoint Field */}
+      <Form.Row columnCount={1} style={{ marginBottom: "2rem" }}>
         <Input
           name="endpoint"
           label="Backend URL (Endpoint)"
+          placeholder="e.g., http://localhost:8000/api/tool"
           required
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
+          style={{ fontSize: "14px" }}
         />
+        <Typography 
+          variant="body" 
+          size="small" 
+          className="text-neutral-content-subtler"
+          style={{ marginTop: "0.5rem", fontSize: "13px" }}
+        >
+          Enter the URL where your labeling tool backend is hosted.
+        </Typography>
       </Form.Row>
 
-      <Form.Row columnCount={1}>
-        <Label text="Input Configuration (Key / Value)" large />
-      </Form.Row>
-      {renderFields(inputFields, "input")}
-      {renderAddButton("input")}
+      {/* Hidden sections - configuration is auto-filled */}
+      <div style={{ display: "none" }}>
+        <Form.Row columnCount={1}>
+          <Label text="Input Configuration (Key / Value)" large />
+        </Form.Row>
+        {renderFields(inputFields, "input")}
+        {renderAddButton("input")}
 
-      <Form.Row columnCount={1}>
-        <Label text="Output Configuration (Key / Value)" large />
-      </Form.Row>
-      {renderFields(outputFields, "output")}
-      {renderAddButton("output")}
+        <Form.Row columnCount={1}>
+          <Label text="Output Configuration (Key / Value)" large />
+        </Form.Row>
+        {renderFields(outputFields, "output")}
+        {renderAddButton("output")}
+      </div>
 
-      {/* Nút Submit */}
+      {/* Configuration Info */}
+      <div 
+        style={{
+          padding: "1rem 1.25rem",
+          backgroundColor: "rgba(59, 130, 246, 0.05)",
+          borderRadius: "8px",
+          marginBottom: "2rem",
+          border: "1px solid rgba(59, 130, 246, 0.2)",
+          borderLeft: "4px solid #3b82f6"
+        }}
+      >
+        <Typography 
+          variant="body" 
+          size="small"
+          className="text-neutral-content-subtler"
+          style={{ fontSize: "13px", lineHeight: "1.5", color: "#64748b" }}
+        >
+          Integration by iSE Research Lab - Connect every tool to automate labeling workflows with pre-configured settings...
+        </Typography>
+      </div>
+
+      {/* Submit Button */}
       <Form.Row
         columnCount={1}
-        style={{ marginTop: "1rem", justifyContent: "flex-end" }}
+        style={{ marginTop: "2rem", justifyContent: "flex-end", gap: "0.75rem", display: "flex" }}
       >
         <Button
           variant="primary"
-          onClick={handleSubmit} // (SỬA LỖI QUAN TRỌNG NHẤT)
+          look="filled"
+          onClick={handleSubmit}
           aria-label={tool ? "Save Changes" : "Add Tool"}
+          style={{ minWidth: "120px" }}
         >
           {tool ? "Save Changes" : "Add Tool"}
         </Button>
