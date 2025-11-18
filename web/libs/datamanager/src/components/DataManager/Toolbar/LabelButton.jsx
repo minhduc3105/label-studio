@@ -21,6 +21,7 @@ const ToolModalContent = ({
   buildAuthHeaders,
   closeModal,
   onToolDeleted,
+  selectedTasks,
 }) => {
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState(null);
@@ -35,11 +36,17 @@ const ToolModalContent = ({
     setRunError(null);
 
     try {
+      const payload = {
+        ...(tool.input_data || {}),
+        selected_tasks: selectedTasks || [],
+        selected_tasks_ids: selectedTasks?.map((t) => t.id) || [],
+        project_id: tool.project_id,
+      };
       const url = `/api/tools/${tool.id}/run`;
       const resp = await fetch(url, {
         method: "POST",
         headers: buildAuthHeaders(),
-        body: JSON.stringify(tool.input_data || {}),
+        body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
@@ -327,13 +334,22 @@ const injector = inject(({ store }) => {
     canLabel: totalTasks > 0 || foundTasks > 0,
     target: currentView?.target ?? "tasks",
     selectedCount: currentView?.selectedCount,
+    selectedTasks: currentView?.selectedTasks,
     allSelected: currentView?.allSelected,
-    project: store.project, // Đã có project
+    project: store.project,
   };
 });
 
 export const LabelButton = injector(
-  ({ store, canLabel, size, target, selectedCount, project }) => {
+  ({
+    store,
+    canLabel,
+    size,
+    target,
+    selectedCount,
+    project,
+    selectedTasks,
+  }) => {
     // Đã nhận project
     const disabled = target === "annotations";
     const triggerRef = useRef();
@@ -439,6 +455,7 @@ export const LabelButton = injector(
             buildAuthHeaders={buildAuthHeaders}
             closeModal={() => modalRef.close()}
             onToolDeleted={handleToolDeleted}
+            selectedTasks={selectedTasks}
           />
         ),
       });
