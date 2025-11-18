@@ -160,16 +160,105 @@ export const ToolSettings = () => {
   // === HÀM 4: CHẠY TOOL (RUN) ===
   const handleRunTool = useCallback(
     async (tool) => {
-      setRunningTools((prev) => ({ ...prev, [tool.id]: true }));
-      try {
-        let result;
+      let loadingModalRef;
+      
+      // Show beautiful loading modal
+      loadingModalRef = modal({
+        title: "",
+        style: { width: 480, textAlign: "center" },
+        closeOnClickOutside: false,
+        bare: true,
+        body: (
+          <div style={{ padding: "3rem 2rem" }}>
+            {/* Animated Icon */}
+            <div style={{ 
+              marginBottom: "2rem",
+              display: "flex",
+              justifyContent: "center"
+            }}>
+              <div style={{
+                width: "80px",
+                height: "80px",
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                animation: "pulse-animation 2s ease-in-out infinite"
+              }}>
+                <Spinner size={40} style={{ color: "white" }} />
+              </div>
+            </div>
 
-        // SỬA ĐỔI: CHỈ GIỮ LẠI LOGIC FETCH TRỰC TIẾP
-        const url = `/api/tools/${tool.id}/run`; // Endpoint POST tùy chỉnh
+            {/* Title */}
+            <Typography 
+              variant="body" 
+              size="large" 
+              weight="bold" 
+              style={{ 
+                marginBottom: "0.75rem",
+                fontSize: "20px",
+                color: "#1e293b"
+              }}
+            >
+              Running Tool
+            </Typography>
+
+            {/* Tool Name */}
+            <Typography 
+              variant="body" 
+              size="medium" 
+              style={{ 
+                marginBottom: "0.5rem",
+                color: "#64748b",
+                fontSize: "15px"
+              }}
+            >
+              {tool.name}
+            </Typography>
+
+            {/* Description */}
+            <Typography 
+              variant="body" 
+              size="small" 
+              className="text-neutral-content-subtler"
+              style={{ 
+                marginBottom: "2rem",
+                color: "#94a3b8",
+                fontSize: "13px"
+              }}
+            >
+              Please wait while we process your request...
+            </Typography>
+
+            {/* Animated Loading Bar */}
+            <div style={{ 
+              height: "6px", 
+              backgroundColor: "#e2e8f0",
+              borderRadius: "3px",
+              overflow: "hidden",
+              position: "relative"
+            }}>
+              <div style={{
+                height: "100%",
+                background: "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
+                animation: "loading-bar-slide 1.5s ease-in-out infinite",
+                width: "40%",
+                borderRadius: "3px"
+              }} />
+            </div>
+          </div>
+        ),
+      });
+
+      setRunningTools((prev) => ({ ...prev, [tool.id]: true }));
+      
+      try {
+        const url = `/api/tools/${tool.id}/run`;
         const resp = await fetch(url, {
           method: "POST",
           headers: buildAuthHeaders(),
-          body: JSON.stringify(tool.input_data || {}), // Đảm bảo gửi body JSON
+          body: JSON.stringify(tool.input_data || {}),
         });
 
         if (!resp.ok) {
@@ -181,38 +270,210 @@ export const ToolSettings = () => {
           throw new Error(errorBody?.detail || `HTTP ${resp.status}`);
         }
 
-        result = await resp.json();
+        const result = await resp.json();
 
-        // Hiển thị kết quả thành công
-        modal({
-          title: `Sucessfull running: ${tool.name}`,
-          canClose: true,
+        // Close loading modal
+        loadingModalRef?.close();
+
+        // Show beautiful success modal
+        const successModalRef = modal({
+          title: "",
+          style: { width: 520 },
+          closeOnClickOutside: true,
+          bare: true,
           body: (
-            <div>
-              <Label text="Raw Label from Tool" large />
-              <pre
-                style={{
-                  background: "#f4f4f4",
-                  padding: "1rem",
-                  borderRadius: "4px",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-all",
+            <div style={{ padding: "2.5rem 2rem" }}>
+              {/* Success Icon */}
+              <div style={{ 
+                marginBottom: "2rem",
+                display: "flex",
+                justifyContent: "center"
+              }}>
+                <div style={{
+                  width: "80px",
+                  height: "80px",
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  animation: "scale-in 0.3s ease-out"
+                }}>
+                  <span style={{ fontSize: "40px" }}>✓</span>
+                </div>
+              </div>
+
+              {/* Title */}
+              <Typography 
+                variant="body" 
+                size="large" 
+                weight="bold" 
+                style={{ 
+                  marginBottom: "0.75rem",
+                  fontSize: "22px",
+                  color: "#059669",
+                  textAlign: "center"
                 }}
               >
-                {JSON.stringify(result, null, 2)}
-              </pre>
+                Success!
+              </Typography>
+
+              {/* Description */}
+              <Typography 
+                variant="body" 
+                size="medium"
+                style={{ 
+                  marginBottom: "2rem",
+                  color: "#64748b",
+                  textAlign: "center",
+                  fontSize: "14px"
+                }}
+              >
+                Tool executed successfully. The page will refresh automatically.
+              </Typography>
+
+              {/* Response Section */}
+              <div style={{
+                backgroundColor: "#f8fafc",
+                borderRadius: "8px",
+                padding: "1rem",
+                border: "1px solid #e2e8f0",
+                marginBottom: "1.5rem"
+              }}>
+                <Label 
+                  text="Response from Tool" 
+                  large 
+                  style={{ 
+                    marginBottom: "0.75rem",
+                    color: "#475569",
+                    fontSize: "13px",
+                    fontWeight: "600"
+                  }} 
+                />
+                <pre
+                  style={{
+                    background: "white",
+                    padding: "1rem",
+                    borderRadius: "6px",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                    border: "1px solid #e2e8f0",
+                    maxHeight: "250px",
+                    overflow: "auto",
+                    fontSize: "12px",
+                    color: "#334155",
+                    lineHeight: "1.5",
+                    margin: 0
+                  }}
+                >
+                  {JSON.stringify(result, null, 2)}
+                </pre>
+              </div>
+
+              {/* Auto-close indicator */}
+              <Typography 
+                variant="body" 
+                size="small"
+                style={{ 
+                  color: "#94a3b8",
+                  textAlign: "center",
+                  fontSize: "12px"
+                }}
+              >
+                Refreshing page in 3 seconds...
+              </Typography>
             </div>
           ),
         });
+
+        // Auto-close after 3 seconds and reload page
+        setTimeout(() => {
+          successModalRef?.close();
+          window.location.reload(); // Refresh the entire page
+        }, 3000);
+
       } catch (e) {
-        // Xử lý lỗi mạng hoặc lỗi HTTP
+        // Close loading modal
+        loadingModalRef?.close();
+        
+        // Show beautiful error modal
         modal({
-          title: `Chạy Tool Thất bại: ${tool.name}`,
-          canClose: true,
+          title: "",
+          style: { width: 500 },
+          closeOnClickOutside: true,
+          bare: true,
           body: (
-            <div style={{ color: "red" }}>
-              <Label text="Lỗi" large />
-              <pre>{e.message || JSON.stringify(e, null, 2)}</pre>
+            <div style={{ padding: "2.5rem 2rem" }}>
+              {/* Error Icon */}
+              <div style={{ 
+                marginBottom: "2rem",
+                display: "flex",
+                justifyContent: "center"
+              }}>
+                <div style={{
+                  width: "80px",
+                  height: "80px",
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  animation: "shake 0.5s ease-in-out"
+                }}>
+                  <span style={{ fontSize: "40px", color: "white" }}>✕</span>
+                </div>
+              </div>
+
+              {/* Title */}
+              <Typography 
+                variant="body" 
+                size="large" 
+                weight="bold" 
+                style={{ 
+                  marginBottom: "0.75rem",
+                  fontSize: "22px",
+                  color: "#dc2626",
+                  textAlign: "center"
+                }}
+              >
+                Failed to Run Tool
+              </Typography>
+
+              {/* Tool Name */}
+              <Typography 
+                variant="body" 
+                size="medium"
+                style={{ 
+                  marginBottom: "1.5rem",
+                  color: "#64748b",
+                  textAlign: "center",
+                  fontSize: "14px"
+                }}
+              >
+                {tool.name}
+              </Typography>
+
+              {/* Error Message */}
+              <div style={{
+                padding: "1.25rem",
+                backgroundColor: "#fef2f2",
+                borderRadius: "8px",
+                border: "1px solid #fecaca",
+                marginBottom: "1rem"
+              }}>
+                <Typography 
+                  variant="body" 
+                  size="small" 
+                  weight="medium"
+                  style={{ 
+                    color: "#991b1b",
+                    fontSize: "13px",
+                    lineHeight: "1.6"
+                  }}
+                >
+                  {e.message || "An unexpected error occurred. Please try again."}
+                </Typography>
+              </div>
             </div>
           ),
         });
@@ -220,8 +481,7 @@ export const ToolSettings = () => {
         setRunningTools((prev) => ({ ...prev, [tool.id]: false }));
       }
     },
-    // SỬA ĐỔI: BỎ 'api' khỏi dependency array
-    [modal, buildAuthHeaders]
+    [buildAuthHeaders]
   );
 
   useEffect(() => {
@@ -233,11 +493,26 @@ export const ToolSettings = () => {
   // === PHẦN RENDER (JSX) ===
   // (Phần này đã đúng, không cần sửa)
   return (
-    <section>
+    <section style={{ padding: "2rem 0" }}>
       <div className="w-[42rem]">
-        <Typography variant="headline" size="medium" className="mb-base">
-          Tools
-        </Typography>
+        <div style={{ marginBottom: "2rem" }}>
+          <Typography 
+            variant="headline" 
+            size="large" 
+            weight="bold"
+            style={{ marginBottom: "0.5rem", color: "var(--color-neutral-content, #212529)" }}
+          >
+            🛠️ Tools
+          </Typography>
+          <Typography 
+            variant="body" 
+            size="medium"
+            className="text-neutral-content-subtler"
+            style={{ color: "var(--color-neutral-content-subtle, #6c757d)" }}
+          >
+            Integration by iSE Research Lab - Configure and manage labeling tools for your annotation workflow.
+          </Typography>
+        </div>
 
         {loading && <Spinner size={32} />}
 
@@ -245,21 +520,32 @@ export const ToolSettings = () => {
           <SimpleCard
             title=""
             className="bg-primary-background border-primary-border-subtler p-base"
+            style={{
+              borderRadius: "12px",
+              padding: "3rem 2rem",
+              backgroundColor: "var(--color-neutral-background-subtle, #f8f9fa)",
+              border: "2px dashed var(--color-neutral-border, #dee2e6)"
+            }}
           >
             <EmptyState
-              size="medium"
+              size="large"
               variant="primary"
-              icon={<IconSettings />}
+              icon={<IconSettings style={{ width: "48px", height: "48px" }} />}
               title="No tools connected yet"
-              description="Connect or configure labeling tools for your project. Customize annotation interfaces and control labeling behavior."
+              description="Integration by iSE Research Lab - Connect or configure labeling tools for your project. Customize annotation interfaces and control labeling behavior to streamline your workflow."
               actions={
                 <Button
                   variant="primary"
                   look="filled"
                   onClick={() => showToolModal()}
                   aria-label="Add new tool"
+                  style={{ 
+                    padding: "0.75rem 2rem",
+                    fontSize: "14px",
+                    fontWeight: "500"
+                  }}
                 >
-                  Add Tool
+                  ✨ Add Your First Tool
                 </Button>
               }
             />
@@ -268,14 +554,26 @@ export const ToolSettings = () => {
 
         {loaded && tools.length > 0 && (
           <>
-            <div style={{ textAlign: "right", marginBottom: "1rem" }}>
+            <div style={{ 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center",
+              marginBottom: "1.5rem",
+              padding: "1rem",
+              backgroundColor: "var(--color-neutral-background-subtle, #f8f9fa)",
+              borderRadius: "8px"
+            }}>
+              <Typography variant="body" size="medium" weight="medium">
+                {tools.length} {tools.length === 1 ? 'Tool' : 'Tools'} Connected
+              </Typography>
               <Button
                 variant="primary"
                 look="filled"
                 onClick={() => showToolModal()}
                 aria-label="Add new tool"
+                style={{ minWidth: "120px" }}
               >
-                Add Tool
+                + Add Tool
               </Button>
             </div>
 
@@ -285,6 +583,90 @@ export const ToolSettings = () => {
               onDelete={handleDeleteTool}
               onRunTool={handleRunTool}
               runningTools={runningTools}
+              onToolClick={(tool) => {
+                modal({
+                  title: `Tool: ${tool.name}`,
+                  style: { width: 600 },
+                  closeOnClickOutside: true,
+                  body: (
+                    <div style={{ padding: "1.5rem 0" }}>
+                      <div style={{ marginBottom: "2rem" }}>
+                        <Typography variant="body" size="large" weight="medium" style={{ marginBottom: "0.75rem" }}>
+                          {tool.name}
+                        </Typography>
+                        <div style={{ 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: "0.5rem",
+                          padding: "0.75rem",
+                          backgroundColor: "#f8fafc",
+                          borderRadius: "6px",
+                          border: "1px solid #e2e8f0"
+                        }}>
+                          <Typography variant="body" size="small" style={{ color: "#64748b" }}>
+                            🔗 Endpoint:
+                          </Typography>
+                          <Typography variant="body" size="small" style={{ color: "#334155", wordBreak: "break-all" }}>
+                            {tool.endpoint}
+                          </Typography>
+                        </div>
+                      </div>
+
+                      <div style={{ 
+                        display: "flex", 
+                        gap: "0.75rem", 
+                        justifyContent: "center",
+                        paddingTop: "1rem",
+                        borderTop: "1px solid #e2e8f0"
+                      }}>
+                        <Button
+                          look="filled"
+                          onClick={() => {
+                            handleRunTool(tool);
+                          }}
+                          style={{
+                            backgroundColor: "#3b82f6",
+                            color: "white",
+                            padding: "0.625rem 1.5rem",
+                            fontSize: "14px",
+                            fontWeight: "500",
+                            flex: 1
+                          }}
+                        >
+                          Run Tool
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            showToolModal(tool);
+                          }}
+                          style={{
+                            padding: "0.625rem 1.5rem",
+                            fontSize: "14px",
+                            fontWeight: "500",
+                            flex: 1
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          look="danger"
+                          onClick={() => {
+                            handleDeleteTool(tool);
+                          }}
+                          style={{
+                            padding: "0.625rem 1.5rem",
+                            fontSize: "14px",
+                            fontWeight: "500",
+                            flex: 1
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                });
+              }}
             />
           </>
         )}

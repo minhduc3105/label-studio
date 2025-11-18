@@ -274,38 +274,39 @@ def convert_label_column_to_label(tasks, project, user):
         if label_value is None or str(label_value).strip() == '' or str(label_value).strip().lower() == 'null':
             tasks_to_reformat.append(task)
             continue
-
-        sentiment_string =None
-        input_label_str = str(label_value).strip()
-        input_label_lower = input_label_str.lower()
-
-        if input_label_lower in valid_choice_lower:
-            sentiment_string = input_label_str
-        else:
+        
+        # Handle both list of labels and single label
+        label_values = label_value if isinstance(label_value, list) else [label_value]
+        matched_labels = []
+        
+        for single_label in label_values:
+            # Try to match as numeric index first
             try:
-                label_int = int(label_value)
-                target_index = label_int
-                if 0 <= target_index < len(choice_list):
-                    sentiment_string = choice_list[target_index]
-                    logger.warning(
-                        f"Label value {label_value} is not valid string choice"
-                        f"using index {target_index} to labeling"
-                    )
+                label_int = int(single_label)
+                if 0 <= label_int < len(choice_list):
+                    matched_labels.append(choice_list[label_int])
                 else:
-                    logger.warning(
-                        f"Label value {label_value} is not a valid string choice in range. Skipping"
-                    )
+                    logger.warning(f"Label index {label_int} out of range for task. Skipping this label.")
             except (ValueError, TypeError):
-                logger.warning(
-                    f"Label value {label_value} matches no Choices Value and is not an interget(index)"
-                    f"Skipping this task"
-                )
-        if sentiment_string:
+                # Not a number, try to match as string
+                label_str = str(single_label).strip()
+                if label_str in choice_list:
+                    matched_labels.append(label_str)
+                else:
+                    logger.warning(f"Label string '{label_str}' not found in choice list {choice_list}. Skipping this label.")
+        
+        # Assign matched labels to task
+        if matched_labels:
             if 'data' not in task:
                 task = {'data': task}
             
-            task['data'][choice_tag_name] =sentiment_string
-        tasks_to_reformat.append(task)        
+            # If original was a list, keep as list; otherwise use single value
+            if isinstance(label_value, list):
+                task['data'][choice_tag_name] = matched_labels
+            else:
+                task['data'][choice_tag_name] = matched_labels[0] if matched_labels else None
+        
+        tasks_to_reformat.append(task)
 
     # --- 3. SỬA LỖI 4: THÊM PHẦN BỊ THIẾU ---
     

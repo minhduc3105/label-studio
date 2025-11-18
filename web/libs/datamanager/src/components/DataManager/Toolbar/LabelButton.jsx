@@ -13,8 +13,8 @@ import { modal } from "../../Common/Modal/Modal";
 // === BẮT ĐẦU COMPONENT MỚI ĐỂ HIỂN THỊ TRONG MODAL ===
 // ===================================================================
 /**
- * Component này sẽ được render bên trong modal.
- * Nó quản lý state (trạng thái) của riêng nó.
+ * Modal content component for tool interaction
+ * Manages its own state for running, editing, and deleting tools
  */
 const ToolModalContent = ({
   tool,
@@ -27,12 +27,13 @@ const ToolModalContent = ({
   const [runError, setRunError] = useState(null);
 
   /**
-   * Sao chép logic chạy tool từ ToolSettings.jsx
+   * Handle running the tool with beautiful loading states
    */
   const handleRunTool = async () => {
     setIsRunning(true);
     setRunResult(null);
     setRunError(null);
+
     try {
       const url = `/api/tools/${tool.id}/run`;
       const resp = await fetch(url, {
@@ -52,32 +53,45 @@ const ToolModalContent = ({
       }
 
       const result = await resp.json();
-      setRunResult(result); // Đánh dấu là "Finish"
+      setRunResult(result);
+
+      // Auto-refresh page after 3 seconds on success
+      setTimeout(() => {
+        closeModal();
+        window.location.reload();
+      }, 3000);
     } catch (e) {
       console.error("Failed to run tool:", e);
       setRunError(e.message);
     } finally {
-      setIsRunning(false); // Dừng chạy
+      setIsRunning(false);
     }
   };
 
   /**
-   * Logic cho nút Edit: Chỉ thông báo
+   * Handle edit - redirect to settings page
    */
   const handleEditTool = () => {
-    alert(
-      "Việc chỉnh sửa Tool chỉ có sẵn trong trang Project Settings > Tools."
-    );
+    if (
+      confirm(
+        "Edit this tool in Project Settings? The page will navigate to the Tools settings."
+      )
+    ) {
+      window.location.href =
+        window.location.origin +
+        window.location.pathname.replace(/\/[^/]*$/, "/settings/tools");
+    }
   };
 
   /**
-   * Sao chép logic xóa tool từ ToolSettings.jsx
+   * Handle deleting the tool
    */
   const handleDeleteTool = async () => {
-    if (confirm(`Bạn có chắc chắn muốn xóa tool "${tool.name}" không?`)) {
-      setIsRunning(true); // Tái sử dụng state 'isRunning' để khóa UI
+    if (confirm(`Are you sure you want to delete the tool "${tool.name}"?`)) {
+      setIsRunning(true);
       setRunError(null);
       setRunResult(null);
+
       try {
         const url = `/api/tools/${tool.id}`;
         const resp = await fetch(url, {
@@ -86,116 +100,209 @@ const ToolModalContent = ({
         });
 
         if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status} - Không thể xóa tool`);
+          throw new Error(`HTTP ${resp.status} - Failed to delete tool`);
         }
 
-        alert("Đã xóa tool thành công.");
-        onToolDeleted(); // Gọi hàm của component cha để tải lại danh sách
-        closeModal(); // Đóng modal
+        // Success - refresh page
+        closeModal();
+        window.location.reload();
       } catch (e) {
         console.error("Failed to delete tool:", e);
         setRunError(e.message);
-        setIsRunning(false); // Mở khóa UI nếu xóa thất bại
+        setIsRunning(false);
       }
     }
   };
 
-  // Giao diện (JSX) của nội dung modal
+  // Beautiful modal UI
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      {/* 1. Phần thông tin (Tên và Endpoint) */}
-      <div>
-        <Typography variant="body" size="medium" weight="medium">
-          {tool.name || "Untitled Tool"}
-        </Typography>
+    <div style={{ padding: "1rem 0" }}>
+      {/* Tool Information */}
+      <div style={{ marginBottom: "1.5rem" }}>
         <Typography
           variant="body"
-          size="small"
-          className="text-neutral-content-subtler"
-          style={{ wordBreak: "break-all" }}
+          size="large"
+          weight="medium"
+          style={{ marginBottom: "0.5rem", color: "#1e293b" }}
         >
-          {tool.endpoint || "No endpoint URL"}
+          {tool.name || "Untitled Tool"}
         </Typography>
+        <div
+          style={{
+            padding: "0.75rem",
+            backgroundColor: "#f8fafc",
+            borderRadius: "6px",
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          <Typography
+            variant="body"
+            size="small"
+            style={{
+              wordBreak: "break-all",
+              color: "#64748b",
+              fontSize: "13px",
+            }}
+          >
+            🔗 {tool.endpoint || "No endpoint URL"}
+          </Typography>
+        </div>
       </div>
 
-      {/* 2. Phần các nút bấm (Run, Edit, Delete) */}
+      {/* Action Buttons */}
       <div
         style={{
           display: "flex",
-          gap: "0.5rem",
-          flexShrink: 0,
-          borderTop: "1px solid #e0e0e0",
+          gap: "0.75rem",
           paddingTop: "1rem",
+          borderTop: "1px solid #e2e8f0",
+          marginBottom: "1rem",
         }}
       >
         {isRunning ? (
-          // Hiển thị Spinner và text "Running..." khi đang chạy
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              height: "32px",
+              flex: 1,
+              padding: "0.5rem",
+              backgroundColor: "#f0f7ff",
+              borderRadius: "6px",
             }}
           >
             <Spinner size="small" />
-            <span style={{ marginLeft: "8px", color: "#555" }}>Running...</span>
+            <span
+              style={{ marginLeft: "8px", color: "#3b82f6", fontWeight: "500" }}
+            >
+              Processing...
+            </span>
           </div>
         ) : (
-          // Hiển thị nút "Run Tool"
-          <Button size="small" look="outline" onClick={handleRunTool}>
-            Run Tool
-          </Button>
+          <>
+            <Button
+              size="small"
+              look="filled"
+              onClick={handleRunTool}
+              style={{
+                flex: 1,
+                backgroundColor: "#3b82f6",
+                color: "white",
+                fontWeight: "500",
+              }}
+            >
+              Run Tool
+            </Button>
+            <Button
+              size="small"
+              onClick={handleEditTool}
+              style={{
+                backgroundColor: "white",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              Edit
+            </Button>
+            <Button
+              size="small"
+              look="danger"
+              onClick={handleDeleteTool}
+              style={{
+                backgroundColor: "white",
+                color: "#ef4444",
+                border: "1px solid #fecaca",
+              }}
+            >
+              Delete
+            </Button>
+          </>
         )}
-        <Button size="small" onClick={handleEditTool} disabled={isRunning}>
-          Edit
-        </Button>
-        <Button
-          size="small"
-          look="danger"
-          onClick={handleDeleteTool}
-          disabled={isRunning}
-        >
-          Delete
-        </Button>
       </div>
 
-      {/* 3. Phần kết quả (Finish hoặc Error) */}
+      {/* Success Result */}
       {runResult && (
-        <div style={{ marginTop: "1rem" }}>
-          <Typography variant="body" weight="medium" style={{ color: "green" }}>
-            ✅ Finish: Đã chạy thành công
+        <div
+          style={{
+            padding: "1rem",
+            backgroundColor: "#f0fdf4",
+            borderRadius: "8px",
+            border: "1px solid #86efac",
+          }}
+        >
+          <Typography
+            variant="body"
+            weight="medium"
+            style={{
+              color: "#16a34a",
+              marginBottom: "0.75rem",
+              fontSize: "14px",
+            }}
+          >
+            ✅ Success! Tool executed successfully
+          </Typography>
+          <Typography
+            variant="body"
+            size="small"
+            style={{
+              color: "#15803d",
+              marginBottom: "1rem",
+              fontSize: "12px",
+            }}
+          >
+            Page will refresh in 3 seconds...
           </Typography>
           <pre
             style={{
-              background: "#f0f9f0",
-              padding: "10px",
-              borderRadius: "4px",
+              background: "white",
+              padding: "0.75rem",
+              borderRadius: "6px",
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
               maxHeight: "200px",
               overflowY: "auto",
-              border: "1px solid #d0e0d0",
+              border: "1px solid #86efac",
+              fontSize: "12px",
+              color: "#334155",
+              margin: 0,
             }}
           >
             {JSON.stringify(runResult, null, 2)}
           </pre>
         </div>
       )}
+
+      {/* Error Result */}
       {runError && (
-        <div style={{ marginTop: "1rem" }}>
-          <Typography variant="body" weight="medium" style={{ color: "red" }}>
-            ❌ Error: Chạy thất bại
+        <div
+          style={{
+            padding: "1rem",
+            backgroundColor: "#fef2f2",
+            borderRadius: "8px",
+            border: "1px solid #fecaca",
+          }}
+        >
+          <Typography
+            variant="body"
+            weight="medium"
+            style={{
+              color: "#dc2626",
+              marginBottom: "0.5rem",
+              fontSize: "14px",
+            }}
+          >
+            ❌ Error: Failed to run tool
           </Typography>
           <pre
             style={{
-              background: "#fff0f0",
-              color: "red",
-              padding: "10px",
-              borderRadius: "4px",
+              background: "white",
+              color: "#991b1b",
+              padding: "0.75rem",
+              borderRadius: "6px",
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
-              border: "1px solid #e0d0d0",
+              border: "1px solid #fecaca",
+              fontSize: "12px",
+              margin: 0,
             }}
           >
             {runError}
@@ -273,9 +380,9 @@ export const LabelButton = injector(
       };
     }, []);
 
-    // MỚI: Tách fetchTools ra ngoài để có thể gọi lại
+    // Fetch tools from API
     const fetchTools = useCallback(async () => {
-      if (!project || !project.id) return; // Kiểm tra project
+      if (!project || !project.id) return;
 
       setIsLoadingTools(true);
       try {
@@ -292,17 +399,16 @@ export const LabelButton = injector(
         const data = await resp.json();
         setTools(data || []);
       } catch (e) {
-        console.error("Failed to fetch tools (Direct HTTP)", e);
+        console.error("Failed to fetch tools", e);
         setTools([]);
       } finally {
         setIsLoadingTools(false);
       }
-    }, [project]); // Phụ thuộc vào 'project'
+    }, [project]);
 
-    // useEffect chính giờ chỉ gọi fetchTools
     useEffect(() => {
       fetchTools();
-    }, [fetchTools]); // Phụ thuộc vào hàm đã được useCallback
+    }, [fetchTools]);
 
     const onLabelAll = () => {
       localStorage.setItem("dm:labelstream:mode", "all");
@@ -314,27 +420,25 @@ export const LabelButton = injector(
       store.startLabelStream();
     };
 
-    // MỚI: Cập nhật onToolClick để sử dụng Modal
+    // Handle tool click to open beautiful modal
     const onToolClick = (tool) => {
-      let modalRef; // Biến để giữ tham chiếu tới modal
+      let modalRef;
 
-      // Hàm này sẽ được truyền xuống modal để nó
-      // có thể yêu cầu component cha (LabelButton) tải lại list tool
       const handleToolDeleted = () => {
         fetchTools();
       };
 
-      // Mở modal
+      // Open beautiful modal
       modalRef = modal({
         title: `Tool: ${tool.name}`,
         canClose: true,
-        style: { width: "500px" }, // Tùy chỉnh độ rộng
+        style: { width: "540px" },
         body: (
           <ToolModalContent
             tool={tool}
             buildAuthHeaders={buildAuthHeaders}
-            closeModal={() => modalRef.close()} // Hàm để modal tự đóng
-            onToolDeleted={handleToolDeleted} // Hàm để làm mới danh sách
+            closeModal={() => modalRef.close()}
+            onToolDeleted={handleToolDeleted}
           />
         ),
       });
@@ -389,34 +493,40 @@ export const LabelButton = injector(
               align="bottom-right"
               content={
                 <Menu size="compact">
-                  {/* 1. Giữ lại mục cũ */}
                   <Menu.Item onClick={onLabelVisible}>
                     Label Tasks As Displayed
                   </Menu.Item>
-                  {/* 2. Thêm vạch ngăn */}
+
                   {(tools.length > 0 || isLoadingTools) && <Menu.Divider />}
-                  {/* 3. Hiển thị trạng thái loading */}
+
                   {isLoadingTools && (
-                    <Menu.Item disabled style={{ color: "#999" }}>
+                    <Menu.Item
+                      disabled
+                      style={{ color: "#94a3b8", fontStyle: "italic" }}
+                    >
                       Loading tools...
                     </Menu.Item>
                   )}
-                  {/* 4. Lặp qua mảng tools và tạo Menu.Item */}
+
                   {!isLoadingTools &&
                     tools.map((tool) => (
                       <Menu.Item
                         key={tool.id}
                         onClick={() => onToolClick(tool)}
+                        style={{ fontWeight: "500" }}
                       >
-                        {tool.name}
+                        🛠️ {tool.name}
                       </Menu.Item>
                     ))}
-                  {/* 5. Hiển thị nếu không có tool */}
+
                   {!isLoadingTools && tools.length === 0 && (
-                    <Menu.Item disabled style={{ color: "#999" }}>
-                      Could not found tool
+                    <Menu.Item
+                      disabled
+                      style={{ color: "#94a3b8", fontStyle: "italic" }}
+                    >
+                      No tools available
                     </Menu.Item>
-                  )}{" "}
+                  )}
                 </Menu>
               }
             >
