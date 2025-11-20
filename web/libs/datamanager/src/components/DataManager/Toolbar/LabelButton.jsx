@@ -18,27 +18,27 @@ const ImportLabelModal = ({ project, buildAuthHeaders, closeModal }) => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // 1. Tạo ref để điều khiển thẻ input file
+  const fileInputRef = useRef(null);
+
   const handleUpload = async () => {
     if (!file) return;
     setUploading(true);
     setError(null);
 
     const formData = new FormData();
-    // Key 'csv_file' phải khớp với backend api.py: request.FILES.get('csv_file')
     formData.append("csv_file", file);
 
     try {
-      // Gọi API Merge mà chúng ta đã tạo ở backend
       const url = `/api/projects/${project.id}/import?merge=true`;
 
       const headers = buildAuthHeaders();
       if (headers["Content-Type"]) {
         delete headers["Content-Type"];
       }
+
       const resp = await fetch(url, {
         method: "POST",
-        // LƯU Ý: buildAuthHeaders(false) để KHÔNG set Content-Type json
-        // Để browser tự set multipart/form-data boundary
         headers: headers,
         body: formData,
       });
@@ -49,9 +49,16 @@ const ImportLabelModal = ({ project, buildAuthHeaders, closeModal }) => {
       }
 
       const data = await resp.json();
+
       setResult(data);
 
-      // Tự động reload sau 2s thành công
+      setFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      // -----------------------
+
+      // Tự động reload sau 2s
       setTimeout(() => {
         closeModal();
         window.location.reload();
@@ -81,9 +88,11 @@ const ImportLabelModal = ({ project, buildAuthHeaders, closeModal }) => {
         }}
       >
         <input
+          ref={fileInputRef}
           type="file"
           accept=".csv"
           onChange={(e) => setFile(e.target.files[0])}
+          disabled={uploading || result}
           style={{ display: "block", margin: "0 auto" }}
         />
       </div>
@@ -123,12 +132,14 @@ const ImportLabelModal = ({ project, buildAuthHeaders, closeModal }) => {
         <Button
           variant="primary"
           onClick={handleUpload}
-          disabled={!file || uploading}
+          disabled={!file || uploading || result}
         >
           {uploading ? (
             <>
               <Spinner size="small" /> Merging...
             </>
+          ) : result ? (
+            "Done"
           ) : (
             "Upload & Merge"
           )}
@@ -137,7 +148,6 @@ const ImportLabelModal = ({ project, buildAuthHeaders, closeModal }) => {
     </div>
   );
 };
-
 // ===================================================================
 // === BẮT ĐẦU COMPONENT MỚI ĐỂ HIỂN THỊ TRONG MODAL ===
 // ===================================================================
