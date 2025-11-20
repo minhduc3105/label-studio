@@ -17,6 +17,7 @@ from csp.decorators import csp
 from django.conf import settings
 from django.db import transaction
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -44,8 +45,9 @@ from .functions import (
     reformat_predictions,
     set_import_background_failure,
     set_reimport_background_failure,
+    convert_label_column_to_label,
 )
-from .functions import convert_label_column_to_label
+from .services import CSVMergeService
 from .models import FileUpload
 from .serializers import FileUploadSerializer, ImportApiSerializer, PredictionSerializer
 from .uploader import create_file_uploads, load_tasks
@@ -416,6 +418,7 @@ class ImportAPI(generics.CreateAPIView):
         response = {'import': project_import.id}
         return Response(response, status=status.HTTP_201_CREATED)
 
+
     def create(self, request, *args, **kwargs):
         commit_to_project = bool_from_request(request.query_params, 'commit_to_project', True)
         return_task_ids = bool_from_request(request.query_params, 'return_task_ids', False)
@@ -423,6 +426,48 @@ class ImportAPI(generics.CreateAPIView):
 
         # check project permissions
         project = generics.get_object_or_404(Project.objects.for_user(self.request.user), pk=self.kwargs['pk'])
+
+        # LOGIC MERGE FOR DATA IMPORT
+        is_merge_request = ( request.query_params.get('merge') == 'true'
+            or bool_from_request(request.data, 'merge', False))
+
+        if is_merge_request:
+            logger.info(f'CSV Merge import requested for project {project} by user {request.user}')
+            csv_file = request.FILES.get('csv_file') or request.FILES.get('file')
+
+            if not csv_file:
+                return Response(
+                    {"detail": "CSV file is required for merge import. Please provide a 'csv_file' in the request."},
+                        status = status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                service = CSVMergeService(project=project, csv_file=csv_file, user=request.user)
+                update_count = service.execute()
+
+                project.update_tasks_counters_and_task_states(
+                    tasks_queryset=Task.objects.filter(project=project),
+                    maximum_annotations_changed=False,
+                    overlap_cohort_percentage_changed=False,
+                    tasks_number_changed=False,
+                )
+
+                return Response({
+                    "status": "success",
+                    "import_type": "merge_csv",
+                    "update_count": update_count,
+                    "message": f"Successfully updated {update_count} tasks in project {project.id}."
+                }, status =status.HTTP_201_CREATED)
+            
+            except ValidationError as ve:
+                logger.error(f'Validation error during CSV merge import for project {project.id}: {ve}')
+                return Response({"detail": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error(f'Error during CSV merge import for project {project.id}: {e}')
+                return Response(
+                    {"detail": "An error occurred during CSV merge import. Please check the server logs for details."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         if settings.VERSION_EDITION != 'Community':
             return self.async_import(request, project, preannotated_from_fields, commit_to_project, return_task_ids)

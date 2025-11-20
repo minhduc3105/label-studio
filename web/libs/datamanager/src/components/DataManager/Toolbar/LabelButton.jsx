@@ -10,6 +10,135 @@ import { Menu } from "../../Common/Menu/Menu";
 import { modal } from "../../Common/Modal/Modal";
 
 // ===================================================================
+// === [COMPONENT 1] MODAL UPLOAD FILE CSV (GỌI API MERGE) ===
+// ===================================================================
+const ImportLabelModal = ({ project, buildAuthHeaders, closeModal }) => {
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+
+    const formData = new FormData();
+    // Key 'csv_file' phải khớp với backend api.py: request.FILES.get('csv_file')
+    formData.append("csv_file", file);
+
+    try {
+      // Gọi API Merge mà chúng ta đã tạo ở backend
+      const url = `/api/projects/${project.id}/import?merge=true`;
+
+      const headers = buildAuthHeaders();
+      if (headers["Content-Type"]) {
+        delete headers["Content-Type"];
+      }
+      const resp = await fetch(url, {
+        method: "POST",
+        // LƯU Ý: buildAuthHeaders(false) để KHÔNG set Content-Type json
+        // Để browser tự set multipart/form-data boundary
+        headers: headers,
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || "Upload failed");
+      }
+
+      const data = await resp.json();
+      setResult(data);
+
+      // Tự động reload sau 2s thành công
+      setTimeout(() => {
+        closeModal();
+        window.location.reload();
+      }, 2000);
+    } catch (e) {
+      console.error(e);
+      setError(e.message || "Error occurred");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "1rem 0" }}>
+      <Typography style={{ marginBottom: "1rem" }}>
+        Upload a CSV file containing <code>image_name</code> and{" "}
+        <code>label</code> columns to merge labels into existing tasks.
+      </Typography>
+
+      <div
+        style={{
+          border: "2px dashed #e2e8f0",
+          padding: "2rem",
+          borderRadius: "8px",
+          textAlign: "center",
+          marginBottom: "1rem",
+        }}
+      >
+        <input
+          type="file"
+          accept=".csv"
+          onChange={(e) => setFile(e.target.files[0])}
+          style={{ display: "block", margin: "0 auto" }}
+        />
+      </div>
+
+      {error && (
+        <div
+          style={{
+            color: "red",
+            marginBottom: "1rem",
+            background: "#fee2e2",
+            padding: "0.5rem",
+            borderRadius: "4px",
+          }}
+        >
+          ❌ {error}
+        </div>
+      )}
+
+      {result && (
+        <div
+          style={{
+            color: "green",
+            marginBottom: "1rem",
+            background: "#dcfce7",
+            padding: "0.5rem",
+            borderRadius: "4px",
+          }}
+        >
+          ✅ {result.message || "Merged successfully!"}
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+        <Button onClick={closeModal} disabled={uploading}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          onClick={handleUpload}
+          disabled={!file || uploading}
+        >
+          {uploading ? (
+            <>
+              <Spinner size="small" /> Merging...
+            </>
+          ) : (
+            "Upload & Merge"
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// ===================================================================
 // === BẮT ĐẦU COMPONENT MỚI ĐỂ HIỂN THỊ TRONG MODAL ===
 // ===================================================================
 /**
@@ -358,7 +487,7 @@ export const LabelButton = injector(
     const [tools, setTools] = useState([]);
     const [isLoadingTools, setIsLoadingTools] = useState(false);
 
-    // --- Các hàm helper (đã copy) ---
+    // --- Các hàm helper ---
     const getCookie = (name) =>
       document.cookie
         .split("; ")
@@ -426,14 +555,86 @@ export const LabelButton = injector(
       fetchTools();
     }, [fetchTools]);
 
+    const showChoiceModal = (mode) => {
+      let choiceModalRef;
+
+      // Logic xử lý khi chọn Manual
+      const startManual = () => {
+        choiceModalRef.close();
+        // Logic cũ: set mode và start stream
+        localStorage.setItem("dm:labelstream:mode", mode);
+        store.startLabelStream();
+      };
+
+      // Logic xử lý khi chọn Import
+      const startImport = () => {
+        choiceModalRef.close();
+        // Mở tiếp Modal Upload
+        const importModalRef = modal({
+          title: "Import Labels from File",
+          style: { width: 500 },
+          body: (
+            <ImportLabelModal
+              project={project}
+              buildAuthHeaders={buildAuthHeaders}
+              closeModal={() => importModalRef.close()}
+            />
+          ),
+        });
+      };
+
+      // Hiển thị Modal Lựa chọn 2 Option
+      choiceModalRef = modal({
+        title: "Choose Labeling Method",
+        style: { width: 400 },
+        body: (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              padding: "1rem 0",
+            }}
+          >
+            <Button
+              onClick={startImport}
+              style={{
+                height: "50px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+                fontSize: "16px",
+              }}
+            >
+              📁 1. Import Label File
+            </Button>
+
+            <Button
+              variant="primary"
+              onClick={startManual}
+              style={{
+                height: "50px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+                fontSize: "16px",
+              }}
+            >
+              ✍️ 2. Manual Labeling
+            </Button>
+          </div>
+        ),
+      });
+    };
+
     const onLabelAll = () => {
-      localStorage.setItem("dm:labelstream:mode", "all");
-      store.startLabelStream();
+      showChoiceModal("all");
     };
 
     const onLabelVisible = () => {
-      localStorage.setItem("dm:labelstream:mode", "filtered");
-      store.startLabelStream();
+      showChoiceModal("filtered");
     };
 
     // Handle tool click to open beautiful modal
