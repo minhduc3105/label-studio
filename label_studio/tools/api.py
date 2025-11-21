@@ -215,69 +215,92 @@ class ToolRunAPI(generics.GenericAPIView):
     parser_classes = (JSONParser, FormParser, MultiPartParser)
     serializer_class = ToolSerializer
     queryset = Tool.objects.all()
-    # Removed: permission_required = ViewClassPermission(POST=...)
 
-    def _collect_tasks_from_project(self, project, limit=None):
+    def _collect_tasks_from_project(self, project, limit=None, selected_ids=None):
         """
-        Collect labeled and unlabeled task summaries from project.
-        Returns (labeled_list, unlabeled_list, labels_list).
-        Each item: {'id': <task.id>, 'text': '<text field>'}
+        Thu thập task từ project.
+        - Tự động phát hiện trường dữ liệu (Text/Image/Audio).
+        - Hỗ trợ lọc theo danh sách ID được chọn (Selected Tasks).
         """
+        
+        # --- 1. TỰ ĐỘNG PHÁT HIỆN DATA KEY TỪ CONFIG ---
+        target_data_key = None
+        try:
+            parsed_config = project.get_parsed_config() or {}
+            for key, info in parsed_config.items():
+                inputs = info.get('inputs', [])
+                if inputs:
+                    for inp in inputs:
+                        val = inp.get('value', '')
+                        if val.startswith('$'):
+                            target_data_key = val[1:] # Ví dụ: '$image' -> 'image'
+                            break
+                if target_data_key:
+                    break
+        except Exception:
+            pass 
+
+        # Helper: Trích xuất dữ liệu của 1 task
         def _task_entry(task):
-            # Hàm này được giữ nguyên, chỉ lấy id và text
             data = getattr(task, "data", {}) or {}
-            text = data.get("text") or data.get("content") or data.get("sentence") or next((v for k, v in data.items()), None)
             entry = {"id": task.id}
-            if text is not None:
-                entry["text"] = text
+            
+            content = None
+            # Ưu tiên 1: Key chuẩn từ config
+            if target_data_key and target_data_key in data:
+                content = data[target_data_key]
+            # Ưu tiên 2: Fallback (lấy value đầu tiên)
+            elif data:
+                content = next(iter(data.values()), None)
+
+            if content is not None:
+                entry["text"] = content 
             return entry
 
+        # --- 2. QUERY VÀ LỌC (SELECTED TASKS) ---
         qs = Task.objects.filter(project=project).order_by("id")
+        
+        # [QUAN TRỌNG] Nếu có danh sách ID được chọn, chỉ lấy những task đó
+        if selected_ids and len(selected_ids) > 0:
+            qs = qs.filter(id__in=selected_ids)
+
         labeled_qs = qs.filter(is_labeled=True)
         unlabeled_qs = qs.filter(is_labeled=False)
 
-        if limit:
+        # Chỉ áp dụng limit nếu KHÔNG chọn cụ thể (chọn cụ thể thì phải lấy hết)
+        if limit and not selected_ids:
             labeled_qs = labeled_qs[:limit]
             unlabeled_qs = unlabeled_qs[:limit]
 
-        # --- THAY ĐỔI NẰM Ở ĐÂY ---
-        # Bỏ dòng cũ: labeled = [_task_entry(t) for t in labeled_qs]
-        
-        # MỚI: Xây dựng 'labeled' data bằng một vòng lặp for
-        # để chúng ta có thể thêm logic lấy 'label'
+        # --- 3. XỬ LÝ DANH SÁCH LABELED ---
         labeled = []
         for t in labeled_qs:
-            # 1. Lấy thông tin cơ bản (id, text) bằng hàm helper
             entry = _task_entry(t)
             
-            # 2. Thêm logic để tìm 'label' từ annotation
             label_value = None
-            try:
-                # Giả định: Lấy annotation đầu tiên/gần nhất của task
-                annotation = t.annotations.first() 
-                
-                # Giả định: annotation.result là một list
-                # và label nằm trong [0]['value']['choices'][0]
-                if annotation and annotation.result:
-                    for res in annotation.result:
-                        # Tìm 'result' đầu tiên có kiểu 'choices'
-                        if res.get('type') == 'choices' and 'value' in res and 'choices' in res['value']:
-                            label_value = res['value']['choices'][0]
-                            break # Đã tìm thấy label
-            except Exception:
-                label_value = None # An toàn nếu cấu trúc khác
+            annotation = t.annotations.last() # Lấy annotation mới nhất
             
-            # 3. Thêm label vào entry nếu tìm thấy
+            if annotation and annotation.result:
+                for res in annotation.result:
+                    # Hỗ trợ cả Image & Text classification (Type: Choices)
+                    if res.get('type') == 'choices':
+                        try:
+                            choices = res.get('value', {}).get('choices', [])
+                            if choices:
+                                label_value = choices[0]
+                                break 
+                        except Exception:
+                            continue
+            
             if label_value is not None:
                 entry["label"] = label_value
             
             labeled.append(entry)
-        # --- KẾT THÚC THAY ĐỔI ---
 
-        # Giữ nguyên logic cho 'unlabeled' vì nó không cần 'label'
+        # --- 4. XỬ LÝ DANH SÁCH UNLABELED ---
         unlabeled = [_task_entry(t) for t in unlabeled_qs]
 
-        # ... (Phần còn lại của hàm để lấy 'labels' list giữ nguyên) ...
+        # --- 5. LẤY METADATA LABELS ---
         labels = []
         try:
             if hasattr(project, "summary") and project.summary and getattr(project.summary, "created_labels", None):
@@ -292,24 +315,18 @@ class ToolRunAPI(generics.GenericAPIView):
             labels = []
 
         labels = list(dict.fromkeys([str(l) for l in labels]))
-        print("Labeled", labeled)
-        print("Unlabeled", unlabeled)
+        
         return labeled, unlabeled, labels
 
-    def _build_payload(self, tool, project, limit=100000):
+    def _build_payload(self, tool, project, limit=100000, selected_ids=None):
         """
-        Build payload to send to external endpoint.
-        Priority:
-         1) use tool.input_data if contains labeled/unlabeled
-         2) load from file path declared in tool.input_data
-         3) collect from project via _collect_tasks_from_project
-        Returns tuple (payload_dict, written_filepath_or_None).
+        Xây dựng payload để gửi đi. Nhận selected_ids từ post().
         """
         input_data = tool.input_data or {}
         payload = {}
         written_path = None
 
-        # 1) tool-provided payload
+        # 1) Tool có sẵn data cứng
         if isinstance(input_data, dict) and ('labeled_data' in input_data or 'unlabeled_data' in input_data):
             payload['labeled_data'] = input_data.get('labeled_data', [])
             payload['unlabeled_data'] = input_data.get('unlabeled_data', [])
@@ -317,24 +334,25 @@ class ToolRunAPI(generics.GenericAPIView):
             payload['labels'] = input_data.get('labels', [])
             return payload, None
 
-        # 2) file path in tool.input_data
+        # 2) Load từ file (ít dùng)
         file_path = input_data.get('file_path') or input_data.get('json_path') or input_data.get('dataset_path')
         if file_path:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     loaded = json.load(f)
-                if isinstance(loaded, dict) and ('labeled_data' in loaded or 'unlabeled_data' in loaded):
-                    payload['labeled_data'] = loaded.get('labeled_data', [])
-                    payload['unlabeled_data'] = loaded.get('unlabeled_data', [])
-                    payload['parameters'] = loaded.get('parameters', input_data.get('parameters', {}))
-                    payload['labels'] = loaded.get('labels', input_data.get('labels', []))
-                    return payload, file_path
+                if isinstance(loaded, dict):
+                    # Return loaded data... (giữ nguyên logic cũ)
+                    return loaded, file_path
             except Exception:
                 pass
 
-        # 3) collect from project using helper
+        # 3) [QUAN TRỌNG] Thu thập từ Project (truyền selected_ids vào)
         try:
-            labeled, unlabeled, labels = self._collect_tasks_from_project(project, limit=limit)
+            labeled, unlabeled, labels = self._collect_tasks_from_project(
+                project, 
+                limit=limit, 
+                selected_ids=selected_ids # <--- TRUYỀN ID XUỐNG ĐÂY
+            )
         except Exception:
             labeled, unlabeled, labels = [], [], []
 
@@ -345,7 +363,7 @@ class ToolRunAPI(generics.GenericAPIView):
         payload['parameters'] = parameters or {}
         payload['labels'] = labels or []
 
-        # 4) write payload to temp file for record (optional)
+        # 4) Backup payload ra file (Optional logging)
         try:
             tmpdir = getattr(settings, 'MEDIA_ROOT', None) or tempfile.gettempdir()
             filename = f"tool_{tool.id}_payload_{int(time.time())}.json"
@@ -360,12 +378,14 @@ class ToolRunAPI(generics.GenericAPIView):
 
     def _map_external_to_response(self, external_output, payload):
         """
-        Normalize external_output into format:
-        {"data": [{"id": <id>, "label": <label>}, ...], "status": "success"}
+        Chuẩn hóa output từ External Tool về format Label Studio hiểu được.
+        Format: {"data": [{"id": 1, "label": "Cat"}, ...], "status": "success"}
         """
+        # Case 1: Tool trả về đúng format chuẩn
         if isinstance(external_output, dict) and 'data' in external_output:
             return {"data": external_output['data'], "status": "success"}
 
+        # Case 2: Tool trả về Dict {id: label}
         if isinstance(external_output, dict):
             mapped = []
             for k, v in external_output.items():
@@ -376,9 +396,13 @@ class ToolRunAPI(generics.GenericAPIView):
                 mapped.append({"id": iid, "label": v})
             return {"data": mapped, "status": "success"}
 
+        # Case 3: Tool trả về List Labels (map theo thứ tự unlabeled_data gửi đi)
         if isinstance(external_output, list):
+            # Nếu list chứa dict sẵn {id:..., label:...}
             if len(external_output) and isinstance(external_output[0], dict) and 'id' in external_output[0]:
                 return {"data": external_output, "status": "success"}
+            
+            # Nếu list chỉ chứa label string ["Cat", "Dog"] -> Map vào unlabeled_data
             unlabeled = payload.get('unlabeled_data', [])
             mapped = []
             for i, lbl in enumerate(external_output):
@@ -389,33 +413,20 @@ class ToolRunAPI(generics.GenericAPIView):
         return {"data": [], "status": "success"}
     
     def get_object(self):
-        # Lấy pk từ kwargs, giống như cách get_object mặc định làm
         queryset = self.filter_queryset(self.get_queryset())
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-
         assert lookup_url_kwarg in self.kwargs, (
-            'Expected view %s to be called with a URL keyword argument named "%s". '
-            'Fix your URL conf, or set the `.lookup_field` attribute on the view correctly.'
+            'Expected view %s to be called with a URL keyword argument named "%s".'
             % (self.__class__.__name__, lookup_url_kwarg)
         )
-
-        # Lấy đối tượng
         obj = generics.get_object_or_404(queryset, **{self.lookup_field: self.kwargs[lookup_url_kwarg]})
-
-        # !!! DÒNG CẦN BỎ QUA ĐÃ BỊ LOẠI:
-        # self.check_object_permissions(self.request, obj) 
-        # Phương thức này thường được gọi trong DRF, nhưng nếu không gọi ở đây, 
-        # nó sẽ không kích hoạt api_permissions.py
-
         return obj
-    
-
     
     def _get_labeling_config_details(self, project):
         try:
             label_project_xml = project.label_config
             root = ET.fromstring(label_project_xml)
-
+            # Tìm thẻ có thuộc tính toName (Choice, Taxonomy...)
             control_tag = root.find(".//*[@toName]")
 
             if control_tag is not None:
@@ -423,62 +434,37 @@ class ToolRunAPI(generics.GenericAPIView):
                 to_name = control_tag.attrib.get("toName")
                 tag_type = control_tag.tag.lower()
 
-                if tag_type not in VALID_CONTROL_TAGS:
-                    logger.warring(
-                        f"Found tag <{control_tag.tag}> but its type "
-                        f"is not a recognized control tag for project {project.id}"
-
-                    )
+                # Chỉ hỗ trợ các tag phân loại
+                if tag_type not in ("choices", "labels", "taxonomy", "hypertextlabels", "paragraphlabels"):
+                    logger.warning(f"Unsupported tag type: {tag_type}")
                     return None, None, None, None
                 
                 valid_choices = []
-                child_tag_name = ""
-
-                if tag_type == "choices":
-                    child_tag_name = "Choice"
-                elif tag_type in ("labels", "hypertextlabels", "paragraphlabels"):
-                    child_tag_name = "Label"
-
-                if child_tag_name:
-                    for choice_elem in control_tag.findall(child_tag_name):
-                        value = choice_elem.attrib.get("value")
-
-                        if value:
-                            valid_choices.append(value)
-                    logger.info(f"Found valid choices for <{tag_type}>: {valid_choices}")
+                child_tag_name = "Choice" if tag_type == "choices" else "Label"
+                
+                for choice_elem in control_tag.findall(f".//{child_tag_name}"):
+                    value = choice_elem.attrib.get("value")
+                    if value:
+                        valid_choices.append(value)
 
                 if from_name and to_name:
                     return from_name, to_name, tag_type, valid_choices
 
-            logger.warning(f"Could not find a valid <Choices> tag in project {project_id}")
             return None, None, None, None
         except Exception as e:
-            logger.error(f"Error parsing label config for project {project.id}: {str(e)}")
+            logger.error(f"Error config details: {e}")
             return None, None, None, None
 
-
-    
     def update_tasks_with_labels(self, api_response, project, user):
-        
+        """
+        Tạo Annotation từ kết quả trả về của Tool.
+        """
         from_name, to_name, tag_type, valid_choices = self._get_labeling_config_details(project)
         
         if not from_name:
-            logger.error(f"Cannot auto-label project {project.id}: config details not found")
-            return {"error": "Labeling config mismatch or missing <Choices> tag."}
-        
-        needs_validation = tag_type in ("choices", "labels", "taxonomy", "hypertextlabels", "paragraphlabels")
-
-        if needs_validation and not valid_choices:
-            logger.warning(
-                f"Project {project.id} uses <{tag_type}> but no valid <Choice>/<Label> "
-                f"values were found in config. Auto-labeling may fail validation."
-            )
+            return {"error": "Config details not found"}
         
         items_to_label = api_response.get("data", [])
-        if not items_to_label:
-            logger.error(f"No data found in API response to label.")
-            return {"updated": 0, "failed": [], "error": "No data in response"}
-        
         updated_count = 0
         failed_ids = []
 
@@ -487,89 +473,68 @@ class ToolRunAPI(generics.GenericAPIView):
             label = item.get("label")
 
             if not task_id or not label:
-                logger.warring(f"Skipping item, missing id or label: {item}")
                 continue
 
-            if needs_validation and label not in valid_choices:
-                logger.warning(
-                    f"Skipping task {task_id}: API label '{label}' is not a valid "
-                    f"choice in project config. Valid choices are: {valid_choices}"
-                )
-                failed_ids.append({"id": task_id, "label": label, "reason": "Invalid label value"})
+            # Validate label nếu có danh sách choices
+            if valid_choices and label not in valid_choices:
+                failed_ids.append({"id": task_id, "reason": f"Invalid label: {label}"})
                 continue
+
             try:
                 task = Task.objects.get(id=task_id, project=project)
-
-                result_json = [
-                    {
-                        "from_name": from_name,
-                        "to_name": to_name,
-                        "type": tag_type,
-                        "value": {
-                            tag_type: [label]
-                        }
-                    }
-                ]
+                
+                result_json = [{
+                    "from_name": from_name,
+                    "to_name": to_name,
+                    "type": tag_type,
+                    "value": { tag_type: [label] }
+                }]
 
                 Annotation.objects.update_or_create(
                     task=task, 
                     completed_by=user,
                     project=project,
-                    defaults={
-                        'result': result_json,
-                        'was_cancelled': False
-                    }
+                    defaults={'result': result_json, 'was_cancelled': False}
                 )
-
                 updated_count +=1
-            except Task.DoesNotExist:
-                logger.warning(f"Task with id {task_id} not found in project {project.id}")
-                failed_ids.append(task_id)
             except Exception as e:
-                logger.error(f"Failed to create annotation for task {task_id}: {str(e)}")
+                failed_ids.append(task_id)
+                logger.error(f"Failed label task {task_id}: {e}")
             
-            summary = {
-                "updated": updated_count,
-                "failed_ids": failed_ids,
-                "total_processed": len(items_to_label)
-            }
-
-            logger.info(f"Auto-labeling summary for project {project.id}: {summary}")
-
-        return summary
-
-
+        return {"updated": updated_count, "failed": failed_ids}
 
     def post(self, request, *args, **kwargs):
         tool = self.get_object() 
         project = tool.project
 
+        # --- [QUAN TRỌNG] LẤY LIST TASK ĐƯỢC CHỌN TỪ FRONTEND ---
+        selected_ids = request.data.get('selected_tasks_ids', [])
+        
         try:
             endpoint_url = tool.endpoint
-            
-            # Validate URL trước
             if not endpoint_url or not endpoint_url.startswith(('http://', 'https://')):
-                logger.error(f'Tool {tool.id} has invalid endpoint: {endpoint_url}')
                 return Response({'error': 'Invalid tool endpoint URL'}, status=400)
             
-            payload, payload_file = self._build_payload(tool, project)
-           # print(payload)
+            # Truyền selected_ids xuống hàm build payload
+            payload, payload_file = self._build_payload(
+                tool, 
+                project, 
+                selected_ids=selected_ids
+            )
 
-            # Thêm headers và error handling tốt hơn
             headers = {'Content-Type': 'application/json'}
+            logger.info(f'Calling tool {tool.id}: {endpoint_url}')
             
-            logger.info(f'Calling tool {tool.id} endpoint: {endpoint_url}')
-            print(endpoint_url)
+            # Gọi External ML Tool
             resp = requests.post(
                 endpoint_url, 
                 json=payload, 
                 timeout=30,
                 headers=headers
             )
-
-            # Kiểm tra status code
             resp.raise_for_status()
 
+            # Xử lý kết quả trả về
             try:
                 external_output = resp.json()
             except ValueError:
@@ -577,58 +542,20 @@ class ToolRunAPI(generics.GenericAPIView):
 
             normalized = self._map_external_to_response(external_output, payload)
 
-            if isinstance(external_output, dict):
+            # Tự động tạo Annotation nếu kết quả hợp lệ
+            if isinstance(normalized, dict) and normalized.get('status') == 'success':
                 update_summary = self.update_tasks_with_labels(
-                    external_output, 
+                    normalized, 
                     project, 
                     request.user
                 )
-                logger.info(f"Auto-labeling sumary: {update_summary}")
-            else:
-                logger.waring(f"External output is not a dict, cannot auto-label")
-                update_summary = {"error": "Invalid putput format from tool"}
-
-            if isinstance(normalized, list):
                 normalized['auto_label_summary'] = update_summary
-                
 
-            logger.debug(f'Tool {tool.id} executed successfully.')
             return Response(normalized, status=status.HTTP_200_OK)
 
-        except requests.exceptions.Timeout:
-            logger.warning(f'Tool {tool.id} endpoint timed out after 30s: {endpoint_url}')
-            return Response({
-                'error': 'Tool endpoint timed out',
-                'endpoint': endpoint_url
-            }, status=504)
-        
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f'Tool {tool.id} connection failed: {endpoint_url} - {str(e)}')
-            return Response({
-                'error': 'Cannot connect to tool endpoint',
-                'details': str(e),
-                'endpoint': endpoint_url
-            }, status=502)
-        
-        except requests.exceptions.HTTPError as e:
-            # Backend trả về lỗi HTTP (4xx, 5xx)
-            logger.error(f'Tool {tool.id} HTTP error: {e.response.status_code} - {str(e)}')
-            return Response({
-                'error': f'Tool endpoint returned error: {e.response.status_code}',
-                'details': e.response.text[:500]  # Giới hạn độ dài
-            }, status=502)
-        
         except requests.exceptions.RequestException as e:
-            # Các lỗi requests khác
-            logger.error(f'Tool {tool.id} request failed: {str(e)}')
-            return Response({
-                'error': 'Failed to call tool endpoint',
-                'details': str(e)
-            }, status=502)
-        
+            logger.error(f'Tool request failed: {e}')
+            return Response({'error': 'Failed to call tool', 'details': str(e)}, status=502)
         except Exception as e:
-            logger.error(f'Tool {tool.id} execution error: {str(e)}', exc_info=True)
-            return Response({
-                'error': 'Internal server error',
-                'details': str(e)
-            }, status=500)
+            logger.error(f'Tool execution error: {e}', exc_info=True)
+            return Response({'error': 'Internal server error', 'details': str(e)}, status=500)
