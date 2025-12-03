@@ -312,23 +312,6 @@ class ToolRunAPI(generics.GenericAPIView):
 
         return final_list
 
-    def _build_payload(self, tool, project, limit=100000, selected_ids=None):
-        input_data = tool.input_data or {}
-        if isinstance(input_data, List):
-            return input_data, None
-        
-        try:
-            task_list = self._collect_tasks_from_project(
-                project,
-                limit=limit,
-                selected_ids=selected_ids
-            )
-        except Exception:
-            task_list = []
-        
-        payload = task_list
-        return payload, None
-
     
     def get_object(self):
         queryset = self.filter_queryset(self.get_queryset())
@@ -418,7 +401,7 @@ class ToolRunAPI(generics.GenericAPIView):
                     task=task,
                     completed_by=user,
                     project=project,
-                    default={
+                    defaults={
                         'result':result_json,
                         'was_cancelled': False,
                         'more_info': more_info_data
@@ -430,6 +413,33 @@ class ToolRunAPI(generics.GenericAPIView):
                 logger.error(f"Failed label task {task_id}: {e}")
         
         return {'updated': updated_count, 'failed': failed_ids}
+    
+    def _build_payload(self, tool, project, limit=100000, selected_ids=None):
+
+        _, _, _, valid_choices = self._get_labeling_config_details(project)
+
+        label_list = valid_choices if valid_choices else []
+
+        input_data = tool.input_data or {}
+        if isinstance(input_data, list):
+            return input_data, None
+        
+        try:
+            task_list = self._collect_tasks_from_project(
+                project,
+                limit=limit,
+                selected_ids=selected_ids
+            )
+        except Exception:
+            task_list = []
+        
+        payload = {
+            "labels": label_list,
+            "data": task_list,
+            "metadata": None
+        }
+        return payload, None
+
 
 
     def post(self, request, *args, **kwargs):
@@ -447,6 +457,8 @@ class ToolRunAPI(generics.GenericAPIView):
             # Truyền selected_ids xuống hàm build payload
             payload, _ = self._build_payload(tool, project, selected_ids=selected_ids)
 
+            logger.info(f"Payload: {payload}")
+
             headers = {'Content-Type': 'application/json'}
             logger.info(f'Calling tool {tool.id}: {endpoint_url}')
             
@@ -458,6 +470,8 @@ class ToolRunAPI(generics.GenericAPIView):
                 headers=headers
             )
             resp.raise_for_status()
+
+            logger.info(f"Response: {resp}")
 
             # Xử lý kết quả trả về
             try:

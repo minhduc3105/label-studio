@@ -15,6 +15,9 @@ class Tool(models.Model):
     def __str__(self): 
         return self.name
     
+    def has_permission(self, user):
+        return self.project.has_permission(user)
+    
     class Meta:
         app_label = 'tools'
         ordering = ['id']
