@@ -36,35 +36,41 @@ export const ToolList = ({
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              border: isActive ? "2px solid var(--color-primary-border, #007bff)" : "1px solid var(--color-neutral-border, #dee2e6)",
+              border: isActive
+                ? "2px solid var(--color-primary-border, #007bff)"
+                : "1px solid var(--color-neutral-border, #dee2e6)",
               borderRadius: "8px",
               padding: "1.25rem",
               transition: "all 0.2s ease",
               opacity: isRunning ? 0.7 : 1,
-              backgroundColor: isActive ? "var(--color-primary-background-subtle, #f0f7ff)" : "var(--color-neutral-background, #ffffff)",
-              cursor: "pointer"
+              backgroundColor: isActive
+                ? "var(--color-primary-background-subtle, #f0f7ff)"
+                : "var(--color-neutral-background, #ffffff)",
+              cursor: "pointer",
             }}
           >
             {/* Phần thông tin (Tên và Endpoint) */}
             <div style={{ flex: 1, marginRight: "1rem" }}>
-              <Typography 
-                variant="body" 
-                size="medium" 
+              <Typography
+                variant="body"
+                size="medium"
                 weight="medium"
-                style={{ 
+                style={{
                   marginBottom: "0.5rem",
                   color: "var(--color-neutral-content, #212529)",
-                  fontSize: "16px"
+                  fontSize: "16px",
                 }}
               >
                 {tool.name || "Untitled Tool"}
                 {isActive && (
-                  <span style={{ 
-                    marginLeft: "0.5rem", 
-                    fontSize: "12px", 
-                    color: "var(--color-primary-content, #007bff)",
-                    fontWeight: "normal"
-                  }}>
+                  <span
+                    style={{
+                      marginLeft: "0.5rem",
+                      fontSize: "12px",
+                      color: "var(--color-primary-content, #007bff)",
+                      fontWeight: "normal",
+                    }}
+                  >
                     (Active)
                   </span>
                 )}
@@ -73,10 +79,10 @@ export const ToolList = ({
                 variant="body"
                 size="small"
                 className="text-neutral-content-subtler"
-                style={{ 
+                style={{
                   wordBreak: "break-all",
                   fontSize: "13px",
-                  color: "var(--color-neutral-content-subtle, #6c757d)"
+                  color: "var(--color-neutral-content-subtle, #6c757d)",
                 }}
               >
                 🔗 {tool.endpoint || "No endpoint URL"}
@@ -118,12 +124,13 @@ export const ToolList = ({
                     fontWeight: "500",
                     fontSize: "14px",
                     transition: "all 0.2s ease",
-                    cursor: "pointer"
+                    cursor: "pointer",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = "#2563eb";
                     e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(59, 130, 246, 0.3)";
+                    e.currentTarget.style.boxShadow =
+                      "0 4px 12px rgba(59, 130, 246, 0.3)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = "#3b82f6";
@@ -150,7 +157,7 @@ export const ToolList = ({
                   fontSize: "14px",
                   transition: "all 0.2s ease",
                   cursor: isRunning ? "not-allowed" : "pointer",
-                  opacity: isRunning ? 0.5 : 1
+                  opacity: isRunning ? 0.5 : 1,
                 }}
                 onMouseEnter={(e) => {
                   if (!isRunning) {
@@ -183,7 +190,7 @@ export const ToolList = ({
                   fontSize: "14px",
                   transition: "all 0.2s ease",
                   cursor: isRunning ? "not-allowed" : "pointer",
-                  opacity: isRunning ? 0.5 : 1
+                  opacity: isRunning ? 0.5 : 1,
                 }}
                 onMouseEnter={(e) => {
                   if (!isRunning) {

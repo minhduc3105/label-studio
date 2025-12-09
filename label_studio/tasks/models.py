@@ -166,6 +166,12 @@ class Task(TaskMixin, models.Model):
         db_index=True,
         help_text='When the last comment was updated',
     )
+    labeled_by_tool = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True, 
+        help_text="Name of the Tool that performed this label task"
+    )
 
     objects = TaskManager()  # task manager by default
     prepared = PreparedTaskManager()  # task manager with filters, ordering, etc for data_manager app

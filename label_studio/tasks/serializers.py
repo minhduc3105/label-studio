@@ -179,6 +179,11 @@ class TaskSimpleSerializer(ModelSerializer):
         super().__init__(*args, **kwargs)
         self.fields['annotations'] = AnnotationSerializer(many=True, default=[], context=self.context, read_only=True)
         self.fields['predictions'] = PredictionSerializer(many=True, default=[], context=self.context, read_only=True)
+        labeled_by_tool = serializers.CharField(
+            read_only=True, 
+            required=False, 
+            allow_null=True
+        )
 
     def to_representation(self, instance):
         project = instance.project
@@ -256,6 +261,12 @@ class BaseTaskSerializerBulk(serializers.ListSerializer):
 
     annotations = AnnotationSerializer(many=True, default=[], read_only=True)
     predictions = PredictionSerializer(many=True, default=[], read_only=True)
+    labeled_by_tool = serializers.CharField(
+        read_only=True, 
+        required=False, 
+        allow_null=True,
+        help_text='Name of the tool that labeled this task'
+    )
 
     @property
     def project(self):
@@ -814,7 +825,7 @@ class TaskIDWithAnnotationsAndPredictionsSerializer(ModelSerializer):
 
     class Meta:
         model = Task
-        fields = ['id', 'annotations', 'predictions']
+        fields = ['id', 'annotations', 'predictions', 'labeled_by_tool']
 
 
 class TaskIDOnlySerializer(ModelSerializer):

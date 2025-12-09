@@ -181,6 +181,7 @@ const ToolModalContent = ({
         selected_tasks_ids: selectedTasks?.map((t) => t.id) || [],
         project_id: tool.project_id,
       };
+
       const url = `/api/tools/${tool.id}/run`;
       const resp = await fetch(url, {
         method: "POST",
@@ -229,9 +230,6 @@ const ToolModalContent = ({
     }
   };
 
-  /**
-   * Handle deleting the tool
-   */
   const handleDeleteTool = async () => {
     if (confirm(`Are you sure you want to delete the tool "${tool.name}"?`)) {
       setIsRunning(true);

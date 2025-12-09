@@ -161,8 +161,7 @@ export const ToolSettings = () => {
   const handleRunTool = useCallback(
     async (tool) => {
       let loadingModalRef;
-      
-      // Show beautiful loading modal
+
       loadingModalRef = modal({
         title: "",
         style: { width: 480, textAlign: "center" },
@@ -171,88 +170,98 @@ export const ToolSettings = () => {
         body: (
           <div style={{ padding: "3rem 2rem" }}>
             {/* Animated Icon */}
-            <div style={{ 
-              marginBottom: "2rem",
-              display: "flex",
-              justifyContent: "center"
-            }}>
-              <div style={{
-                width: "80px",
-                height: "80px",
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            <div
+              style={{
+                marginBottom: "2rem",
                 display: "flex",
-                alignItems: "center",
                 justifyContent: "center",
-                animation: "pulse-animation 2s ease-in-out infinite"
-              }}>
+              }}
+            >
+              <div
+                style={{
+                  width: "80px",
+                  height: "80px",
+                  borderRadius: "50%",
+                  background:
+                    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  animation: "pulse-animation 2s ease-in-out infinite",
+                }}
+              >
                 <Spinner size={40} style={{ color: "white" }} />
               </div>
             </div>
 
             {/* Title */}
-            <Typography 
-              variant="body" 
-              size="large" 
-              weight="bold" 
-              style={{ 
+            <Typography
+              variant="body"
+              size="large"
+              weight="bold"
+              style={{
                 marginBottom: "0.75rem",
                 fontSize: "20px",
-                color: "#1e293b"
+                color: "#1e293b",
               }}
             >
               Running Tool
             </Typography>
 
             {/* Tool Name */}
-            <Typography 
-              variant="body" 
-              size="medium" 
-              style={{ 
+            <Typography
+              variant="body"
+              size="medium"
+              style={{
                 marginBottom: "0.5rem",
                 color: "#64748b",
-                fontSize: "15px"
+                fontSize: "15px",
               }}
             >
               {tool.name}
             </Typography>
 
             {/* Description */}
-            <Typography 
-              variant="body" 
-              size="small" 
+            <Typography
+              variant="body"
+              size="small"
               className="text-neutral-content-subtler"
-              style={{ 
+              style={{
                 marginBottom: "2rem",
                 color: "#94a3b8",
-                fontSize: "13px"
+                fontSize: "13px",
               }}
             >
               Please wait while we process your request...
             </Typography>
 
             {/* Animated Loading Bar */}
-            <div style={{ 
-              height: "6px", 
-              backgroundColor: "#e2e8f0",
-              borderRadius: "3px",
-              overflow: "hidden",
-              position: "relative"
-            }}>
-              <div style={{
-                height: "100%",
-                background: "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
-                animation: "loading-bar-slide 1.5s ease-in-out infinite",
-                width: "40%",
-                borderRadius: "3px"
-              }} />
+            <div
+              style={{
+                height: "6px",
+                backgroundColor: "#e2e8f0",
+                borderRadius: "3px",
+                overflow: "hidden",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  background:
+                    "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
+                  animation: "loading-bar-slide 1.5s ease-in-out infinite",
+                  width: "40%",
+                  borderRadius: "3px",
+                }}
+              />
             </div>
           </div>
         ),
       });
 
       setRunningTools((prev) => ({ ...prev, [tool.id]: true }));
-      
+
       try {
         const url = `/api/tools/${tool.id}/run`;
         const resp = await fetch(url, {
@@ -284,71 +293,78 @@ export const ToolSettings = () => {
           body: (
             <div style={{ padding: "2.5rem 2rem" }}>
               {/* Success Icon */}
-              <div style={{ 
-                marginBottom: "2rem",
-                display: "flex",
-                justifyContent: "center"
-              }}>
-                <div style={{
-                  width: "80px",
-                  height: "80px",
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+              <div
+                style={{
+                  marginBottom: "2rem",
                   display: "flex",
-                  alignItems: "center",
                   justifyContent: "center",
-                  animation: "scale-in 0.3s ease-out"
-                }}>
+                }}
+              >
+                <div
+                  style={{
+                    width: "80px",
+                    height: "80px",
+                    borderRadius: "50%",
+                    background:
+                      "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    animation: "scale-in 0.3s ease-out",
+                  }}
+                >
                   <span style={{ fontSize: "40px" }}>✓</span>
                 </div>
               </div>
 
               {/* Title */}
-              <Typography 
-                variant="body" 
-                size="large" 
-                weight="bold" 
-                style={{ 
+              <Typography
+                variant="body"
+                size="large"
+                weight="bold"
+                style={{
                   marginBottom: "0.75rem",
                   fontSize: "22px",
                   color: "#059669",
-                  textAlign: "center"
+                  textAlign: "center",
                 }}
               >
                 Success!
               </Typography>
 
               {/* Description */}
-              <Typography 
-                variant="body" 
+              <Typography
+                variant="body"
                 size="medium"
-                style={{ 
+                style={{
                   marginBottom: "2rem",
                   color: "#64748b",
                   textAlign: "center",
-                  fontSize: "14px"
+                  fontSize: "14px",
                 }}
               >
                 Tool executed successfully. The page will refresh automatically.
               </Typography>
 
               {/* Response Section */}
-              <div style={{
-                backgroundColor: "#f8fafc",
-                borderRadius: "8px",
-                padding: "1rem",
-                border: "1px solid #e2e8f0",
-                marginBottom: "1.5rem"
-              }}>
-                <Label 
-                  text="Response from Tool" 
-                  large 
-                  style={{ 
+              <div
+                style={{
+                  backgroundColor: "#f8fafc",
+                  borderRadius: "8px",
+                  padding: "1rem",
+                  border: "1px solid #e2e8f0",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <Label
+                  text="Response from Tool"
+                  large
+                  style={{
                     marginBottom: "0.75rem",
                     color: "#475569",
                     fontSize: "13px",
-                    fontWeight: "600"
-                  }} 
+                    fontWeight: "600",
+                  }}
                 />
                 <pre
                   style={{
@@ -363,7 +379,7 @@ export const ToolSettings = () => {
                     fontSize: "12px",
                     color: "#334155",
                     lineHeight: "1.5",
-                    margin: 0
+                    margin: 0,
                   }}
                 >
                   {JSON.stringify(result, null, 2)}
@@ -371,13 +387,13 @@ export const ToolSettings = () => {
               </div>
 
               {/* Auto-close indicator */}
-              <Typography 
-                variant="body" 
+              <Typography
+                variant="body"
                 size="small"
-                style={{ 
+                style={{
                   color: "#94a3b8",
                   textAlign: "center",
-                  fontSize: "12px"
+                  fontSize: "12px",
                 }}
               >
                 Refreshing page in 3 seconds...
@@ -391,11 +407,10 @@ export const ToolSettings = () => {
           successModalRef?.close();
           window.location.reload(); // Refresh the entire page
         }, 3000);
-
       } catch (e) {
         // Close loading modal
         loadingModalRef?.close();
-        
+
         // Show beautiful error modal
         modal({
           title: "",
@@ -405,73 +420,81 @@ export const ToolSettings = () => {
           body: (
             <div style={{ padding: "2.5rem 2rem" }}>
               {/* Error Icon */}
-              <div style={{ 
-                marginBottom: "2rem",
-                display: "flex",
-                justifyContent: "center"
-              }}>
-                <div style={{
-                  width: "80px",
-                  height: "80px",
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+              <div
+                style={{
+                  marginBottom: "2rem",
                   display: "flex",
-                  alignItems: "center",
                   justifyContent: "center",
-                  animation: "shake 0.5s ease-in-out"
-                }}>
+                }}
+              >
+                <div
+                  style={{
+                    width: "80px",
+                    height: "80px",
+                    borderRadius: "50%",
+                    background:
+                      "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    animation: "shake 0.5s ease-in-out",
+                  }}
+                >
                   <span style={{ fontSize: "40px", color: "white" }}>✕</span>
                 </div>
               </div>
 
               {/* Title */}
-              <Typography 
-                variant="body" 
-                size="large" 
-                weight="bold" 
-                style={{ 
+              <Typography
+                variant="body"
+                size="large"
+                weight="bold"
+                style={{
                   marginBottom: "0.75rem",
                   fontSize: "22px",
                   color: "#dc2626",
-                  textAlign: "center"
+                  textAlign: "center",
                 }}
               >
                 Failed to Run Tool
               </Typography>
 
               {/* Tool Name */}
-              <Typography 
-                variant="body" 
+              <Typography
+                variant="body"
                 size="medium"
-                style={{ 
+                style={{
                   marginBottom: "1.5rem",
                   color: "#64748b",
                   textAlign: "center",
-                  fontSize: "14px"
+                  fontSize: "14px",
                 }}
               >
                 {tool.name}
               </Typography>
 
               {/* Error Message */}
-              <div style={{
-                padding: "1.25rem",
-                backgroundColor: "#fef2f2",
-                borderRadius: "8px",
-                border: "1px solid #fecaca",
-                marginBottom: "1rem"
-              }}>
-                <Typography 
-                  variant="body" 
-                  size="small" 
+              <div
+                style={{
+                  padding: "1.25rem",
+                  backgroundColor: "#fef2f2",
+                  borderRadius: "8px",
+                  border: "1px solid #fecaca",
+                  marginBottom: "1rem",
+                }}
+              >
+                <Typography
+                  variant="body"
+                  size="small"
                   weight="medium"
-                  style={{ 
+                  style={{
                     color: "#991b1b",
                     fontSize: "13px",
-                    lineHeight: "1.6"
+                    lineHeight: "1.6",
                   }}
                 >
-                  {e.message || "An unexpected error occurred. Please try again."}
+                  {e.message ||
+                    "An unexpected error occurred. Please try again."}
                 </Typography>
               </div>
             </div>
@@ -496,21 +519,25 @@ export const ToolSettings = () => {
     <section style={{ padding: "2rem 0" }}>
       <div className="w-[42rem]">
         <div style={{ marginBottom: "2rem" }}>
-          <Typography 
-            variant="headline" 
-            size="large" 
+          <Typography
+            variant="headline"
+            size="large"
             weight="bold"
-            style={{ marginBottom: "0.5rem", color: "var(--color-neutral-content, #212529)" }}
+            style={{
+              marginBottom: "0.5rem",
+              color: "var(--color-neutral-content, #212529)",
+            }}
           >
             🛠️ Tools
           </Typography>
-          <Typography 
-            variant="body" 
+          <Typography
+            variant="body"
             size="medium"
             className="text-neutral-content-subtler"
             style={{ color: "var(--color-neutral-content-subtle, #6c757d)" }}
           >
-            Integration by iSE Research Lab - Configure and manage labeling tools for your annotation workflow.
+            Integration by iSE Research Lab - Configure and manage labeling
+            tools for your annotation workflow.
           </Typography>
         </div>
 
@@ -523,8 +550,9 @@ export const ToolSettings = () => {
             style={{
               borderRadius: "12px",
               padding: "3rem 2rem",
-              backgroundColor: "var(--color-neutral-background-subtle, #f8f9fa)",
-              border: "2px dashed var(--color-neutral-border, #dee2e6)"
+              backgroundColor:
+                "var(--color-neutral-background-subtle, #f8f9fa)",
+              border: "2px dashed var(--color-neutral-border, #dee2e6)",
             }}
           >
             <EmptyState
@@ -539,10 +567,10 @@ export const ToolSettings = () => {
                   look="filled"
                   onClick={() => showToolModal()}
                   aria-label="Add new tool"
-                  style={{ 
+                  style={{
                     padding: "0.75rem 2rem",
                     fontSize: "14px",
-                    fontWeight: "500"
+                    fontWeight: "500",
                   }}
                 >
                   ✨ Add Your First Tool
@@ -554,17 +582,20 @@ export const ToolSettings = () => {
 
         {loaded && tools.length > 0 && (
           <>
-            <div style={{ 
-              display: "flex", 
-              justifyContent: "space-between", 
-              alignItems: "center",
-              marginBottom: "1.5rem",
-              padding: "1rem",
-              backgroundColor: "var(--color-neutral-background-subtle, #f8f9fa)",
-              borderRadius: "8px"
-            }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "1.5rem",
+                padding: "1rem",
+                backgroundColor:
+                  "var(--color-neutral-background-subtle, #f8f9fa)",
+                borderRadius: "8px",
+              }}
+            >
               <Typography variant="body" size="medium" weight="medium">
-                {tools.length} {tools.length === 1 ? 'Tool' : 'Tools'} Connected
+                {tools.length} {tools.length === 1 ? "Tool" : "Tools"} Connected
               </Typography>
               <Button
                 variant="primary"
@@ -591,34 +622,51 @@ export const ToolSettings = () => {
                   body: (
                     <div style={{ padding: "1.5rem 0" }}>
                       <div style={{ marginBottom: "2rem" }}>
-                        <Typography variant="body" size="large" weight="medium" style={{ marginBottom: "0.75rem" }}>
+                        <Typography
+                          variant="body"
+                          size="large"
+                          weight="medium"
+                          style={{ marginBottom: "0.75rem" }}
+                        >
                           {tool.name}
                         </Typography>
-                        <div style={{ 
-                          display: "flex", 
-                          alignItems: "center", 
-                          gap: "0.5rem",
-                          padding: "0.75rem",
-                          backgroundColor: "#f8fafc",
-                          borderRadius: "6px",
-                          border: "1px solid #e2e8f0"
-                        }}>
-                          <Typography variant="body" size="small" style={{ color: "#64748b" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            padding: "0.75rem",
+                            backgroundColor: "#f8fafc",
+                            borderRadius: "6px",
+                            border: "1px solid #e2e8f0",
+                          }}
+                        >
+                          <Typography
+                            variant="body"
+                            size="small"
+                            style={{ color: "#64748b" }}
+                          >
                             🔗 Endpoint:
                           </Typography>
-                          <Typography variant="body" size="small" style={{ color: "#334155", wordBreak: "break-all" }}>
+                          <Typography
+                            variant="body"
+                            size="small"
+                            style={{ color: "#334155", wordBreak: "break-all" }}
+                          >
                             {tool.endpoint}
                           </Typography>
                         </div>
                       </div>
 
-                      <div style={{ 
-                        display: "flex", 
-                        gap: "0.75rem", 
-                        justifyContent: "center",
-                        paddingTop: "1rem",
-                        borderTop: "1px solid #e2e8f0"
-                      }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "0.75rem",
+                          justifyContent: "center",
+                          paddingTop: "1rem",
+                          borderTop: "1px solid #e2e8f0",
+                        }}
+                      >
                         <Button
                           look="filled"
                           onClick={() => {
@@ -630,7 +678,7 @@ export const ToolSettings = () => {
                             padding: "0.625rem 1.5rem",
                             fontSize: "14px",
                             fontWeight: "500",
-                            flex: 1
+                            flex: 1,
                           }}
                         >
                           Run Tool
@@ -643,7 +691,7 @@ export const ToolSettings = () => {
                             padding: "0.625rem 1.5rem",
                             fontSize: "14px",
                             fontWeight: "500",
-                            flex: 1
+                            flex: 1,
                           }}
                         >
                           Edit
@@ -657,7 +705,7 @@ export const ToolSettings = () => {
                             padding: "0.625rem 1.5rem",
                             fontSize: "14px",
                             fontWeight: "500",
-                            flex: 1
+                            flex: 1,
                           }}
                         >
                           Delete

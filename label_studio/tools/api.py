@@ -288,8 +288,10 @@ class ToolRunAPI(generics.GenericAPIView):
 
 
         qs = Task.objects.filter(project=project).order_by("id")
-        if selected_ids: qs = qs.filter(id__in=selected_ids)
-        if limit and not selected_ids: qs = qs[:limit]
+        if selected_ids and isinstance(selected_ids, list) and len(selected_ids) > 0:
+            qs = qs.filter(id__in=selected_ids)
+        elif limit:
+            qs = qs[:limit]
 
         final_list = []
         for t in qs:
@@ -356,13 +358,14 @@ class ToolRunAPI(generics.GenericAPIView):
             logger.error(f"Error config details: {e}")
             return None, None, None, None
 
-    def update_tasks_with_labels(self, api_response, project, user):
+    def update_tasks_with_labels(self, api_response, project, user, tool_name=None):
         updated_count = 0
         from_name, to_name, tag_type, valid_choices = self._get_labeling_config_details(project)
 
         if not from_name or not to_name:
             logger.error("Labeling config details not found or unsupported.")
             return {"updated": updated_count, "skipped": 0}
+            
         items_to_label = api_response
         if isinstance(items_to_label, dict) and 'data' in items_to_label:
             items_to_label = items_to_label['data']
@@ -376,20 +379,38 @@ class ToolRunAPI(generics.GenericAPIView):
             if not task_id or not label:
                 continue
                 
+            # Lấy các thông tin phụ (ngoài id, label)
             more_info_data = item.copy()
-            more_info_data.pop("id", None)
-            more_info_data.pop("label", None)
-            more_info_data.pop("data", None)
+            [more_info_data.pop(k, None) for k in ["id", "label", "data"]]
 
             if valid_choices and label not in valid_choices:
-                failed_ids.append({
-                    "id": task_id,
-                    "reason": f"Invalid label: {label}"
-                })
+                failed_ids.append({"id": task_id, "reason": f"Invalid label: {label}"})
                 continue
 
             try:
-                task = Task.objects.get(id = task_id, project = project)
+                task = Task.objects.get(id=task_id, project=project)
+                
+                # --- [PHẦN SỬA ĐỔI QUAN TRỌNG] ---
+                # Lấy data hiện tại của Task (nếu chưa có thì là dict rỗng)
+                current_data = task.data if task.data else {}
+                data_changed = False
+
+                # 1. Merge thông tin phụ từ Tool trả về (nếu có)
+                if more_info_data:
+                    current_data.update(more_info_data)
+                    data_changed = True
+
+                # 2. Lưu tên Tool trực tiếp vào JSON data
+                if tool_name:
+                    current_data['labeled_by_tool'] = tool_name
+                    data_changed = True
+
+                # 3. Chỉ lưu xuống DB nếu có sự thay đổi
+                if data_changed:
+                    task.data = current_data
+                    task.save(update_fields=['data'])
+                # -----------------------------------
+
                 result_json = [{
                     "from_name": from_name,
                     "to_name": to_name,
@@ -402,9 +423,8 @@ class ToolRunAPI(generics.GenericAPIView):
                     completed_by=user,
                     project=project,
                     defaults={
-                        'result':result_json,
+                        'result': result_json,
                         'was_cancelled': False,
-                        'more_info': more_info_data
                     }
                 )
                 updated_count += 1
@@ -446,15 +466,14 @@ class ToolRunAPI(generics.GenericAPIView):
         tool = self.get_object() 
         project = tool.project
 
-        # --- [QUAN TRỌNG] LẤY LIST TASK ĐƯỢC CHỌN TỪ FRONTEND ---
         selected_ids = request.data.get('selected_tasks_ids', [])
+        logger.info(f"List selected {selected_ids}")
         
         try:
             endpoint_url = tool.endpoint
             if not endpoint_url or not endpoint_url.startswith(('http://', 'https://')):
                 return Response({'error': 'Invalid tool endpoint URL'}, status=400)
             
-            # Truyền selected_ids xuống hàm build payload
             payload, _ = self._build_payload(tool, project, selected_ids=selected_ids)
 
             logger.info(f"Payload: {payload}")
@@ -462,7 +481,6 @@ class ToolRunAPI(generics.GenericAPIView):
             headers = {'Content-Type': 'application/json'}
             logger.info(f'Calling tool {tool.id}: {endpoint_url}')
             
-            # Gọi External ML Tool
             resp = requests.post(
                 endpoint_url, 
                 json=payload, 
@@ -473,18 +491,18 @@ class ToolRunAPI(generics.GenericAPIView):
 
             logger.info(f"Response: {resp}")
 
-            # Xử lý kết quả trả về
             try:
                 external_output = resp.json()
             except ValueError:
                 external_output = resp.text
 
-    
+            tool_name_str = getattr(tool, 'title', getattr(tool, 'name', f'Tool {tool.id}'))
 
             update_summary = self.update_tasks_with_labels(
                 external_output,
                 project,
-                request.user
+                request.user,
+                tool_name=tool_name_str
             )
 
             return Response({
@@ -499,4 +517,4 @@ class ToolRunAPI(generics.GenericAPIView):
             return Response({'error': 'Failed to call tool', 'details': str(e)}, status=502)
         except Exception as e:
             logger.error(f'Tool execution error: {e}', exc_info=True)
-            return Response({'error': 'Internal server error', 'details': str(e)}, status=500)
+            return Response({'error': 'Internal server error', 'details': str(e)}, status=500)  
