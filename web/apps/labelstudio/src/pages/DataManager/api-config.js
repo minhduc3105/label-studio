@@ -37,6 +37,8 @@ export const APIConfig = {
     /** Single annotation */
     annotation: "/../annotations/:id",
 
+    tools: "/api/tools",
+
     /** Mark sample as skipped */
     skipTask: {
       method: "post",

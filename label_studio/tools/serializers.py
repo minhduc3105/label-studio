@@ -16,5 +16,6 @@ class ToolSerializer(serializers.ModelSerializer):
             'output_data',
             'project',
             'project_title',
+            'color_data'
         ]
         read_only_fields = ['id', 'project_title']

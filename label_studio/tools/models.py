@@ -11,6 +11,7 @@ class Tool(models.Model):
     endpoint = models.URLField(max_length=2048, blank=False, null=False, help_text="Tool endpoint URL")
     input_data = models.JSONField(blank=True, null=True, default=dict, help_text="Input Configuration for Tool")
     output_data = models.JSONField(blank=True, null=True, default=dict, help_text="Output Configuration for Tool")
+    color_data = models.CharField(max_length=7, default="#5CA5F3", blank=True, help_text="Color code represent Tool")
 
     def __str__(self): 
         return self.name

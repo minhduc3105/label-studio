@@ -5,6 +5,8 @@ import requests
 import xml.etree.ElementTree as ET
 import base64
 import os
+import random
+import colorsys
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
@@ -83,6 +85,67 @@ VALID_CONTROL_TAGS = {
         },
     )
 )
+
+def generate_distinct_light_color(existing_colors=None):
+    """
+    Sinh ra mã màu HEX ngẫu nhiên nhưng đảm bảo độ sáng cao (nền sáng)
+    để chữ đen/nâu có thể nổi bật.
+    """
+    if existing_colors is None:
+        existing_colors = []
+    
+    max_retries = 50
+    for _ in range(max_retries):
+        # 1. Random Hue (Màu sắc): 0.0 - 1.0 (Đại diện cho 0-360 độ)
+        h = random.random()
+        
+        # 2. Random Saturation (Độ bão hòa): 0.2 - 0.5 (20% - 50%)
+        # Giữ ở mức thấp để màu ra dạng Pastel (nhạt), không bị chói quá
+        s = random.uniform(0.2, 0.5)
+        
+        # 3. Random Value (Độ sáng): 0.85 - 1.0 (85% - 100%)
+        # Giữ ở mức cao để nền luôn sáng -> Chữ đen sẽ nổi
+        v = random.uniform(0.85, 1.0)
+        
+        # Chuyển đổi từ HSV sang RGB
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        
+        # Chuyển sang mã HEX (#RRGGBB)
+        hex_color = '#%02x%02x%02x' % (int(r*255), int(g*255), int(b*255))
+        
+        # Kiểm tra trùng lặp
+        if hex_color not in existing_colors:
+            return hex_color
+            
+    # Fallback nếu random mãi vẫn trùng (hiếm khi xảy ra)
+    return "#FFFFFF"
+
+# ... Phần Decorator giữ nguyên ...
+class ToolListAPI(generics.ListCreateAPIView):
+    parser_classes = (JSONParser, FormParser, MultiPartParser)
+    serializer_class = ToolSerializer
+
+    # ... Phần get_queryset và get_serializer_context giữ nguyên ...
+    def get_queryset(self):
+        project_id = self.request.query_params.get('project')
+        if not project_id:
+            return Tool.objects.none()
+        try:
+            project = Project.objects.get(pk=project_id)
+        except (Project.DoesNotExist, ValueError):
+            return Tool.objects.none()
+        return Tool.objects.filter(project=project)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        project_id = self.request.data.get('project')
+        if project_id:
+            try:
+                context['project'] = Project.objects.get(pk=project_id)
+            except Project.DoesNotExist:
+                pass
+        return context
+    
 class ToolListAPI(generics.ListCreateAPIView):
     parser_classes = (JSONParser, FormParser, MultiPartParser)
     serializer_class = ToolSerializer
@@ -116,6 +179,10 @@ class ToolListAPI(generics.ListCreateAPIView):
             # Removed: PermissionDenied
             raise ValidationError({'project': 'Project does not exist.'})
         # Removed: project.has_permission(...) check
+        existing_colors = list(Tool.objects.filter(project=project).values_list('color_data', flat=True))
+
+        # 2. Sinh màu mới khác biệt và đảm bảo độ tương phản
+        new_color = generate_distinct_light_color(existing_colors)
         serializer.save(project=project)
 
 

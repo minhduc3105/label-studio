@@ -73,6 +73,27 @@ const buildLink = (path, params) => {
   return generatePath(`/projects/:id${path}`, params);
 };
 
+// Hàm chuyển đổi HEX sang RGBA để làm màu nền nhạt
+// Ví dụ: hexToRgba("#FF0000", 0.1) -> "rgba(255, 0, 0, 0.1)"
+const hexToRgba = (hex, alpha = 0.2) => {
+  let c;
+  if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+    c = hex.substring(1).split("");
+    if (c.length === 3) {
+      c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+    }
+    c = "0x" + c.join("");
+    return (
+      "rgba(" +
+      [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(",") +
+      "," +
+      alpha +
+      ")"
+    );
+  }
+  return hex; // Trả về nguyên gốc nếu không phải hex
+};
+
 export const DataManagerPage = ({ ...props }) => {
   const dependencies = useMemo(loadDependencies, []);
   const toast = useContext(ToastContext);
@@ -223,81 +244,196 @@ export const DataManagerPage = ({ ...props }) => {
     setContextProps({ dmRef: dataManager });
   }, [projectId]);
 
-  const highlightProcessedTasks = (idsToHighlight) => {
-    // Bỏ dòng đọc localStorage ở đây đi
-    // const storedIds = localStorage.getItem("highlight_tasks");
+  // const highlightProcessedTasks = (idsToHighlight) => {
+  //   // Bỏ dòng đọc localStorage ở đây đi
+  //   // const storedIds = localStorage.getItem("highlight_tasks");
 
-    if (!idsToHighlight || idsToHighlight.length === 0) return;
+  //   if (!idsToHighlight || idsToHighlight.length === 0) return;
 
-    // Chuyển ID về string để so sánh (nếu chưa phải string)
-    const ids = idsToHighlight.map(String);
+  //   // Chuyển ID về string để so sánh (nếu chưa phải string)
+  //   const ids = idsToHighlight.map(String);
 
-    const rows = document.querySelectorAll(".lsf-table-row");
+  //   const rows = document.querySelectorAll(".lsf-table-row");
+
+  //   rows.forEach((row) => {
+  //     if (row.dataset.highlighted === "true") return;
+
+  //     const cells = row.querySelectorAll(".lsf-table__cell");
+  //     let isMatch = false;
+
+  //     cells.forEach((cell) => {
+  //       if (ids.includes(cell.innerText.trim())) {
+  //         isMatch = true;
+  //       }
+  //     });
+
+  //     if (isMatch) {
+  //       row.style.backgroundColor = "#dcfce7";
+  //       row.style.transition = "background-color 0.3s";
+  //       row.style.borderLeft = "4px solid #22c55e";
+  //       row.dataset.highlighted = "true";
+  //     }
+  //   });
+  // };
+  // useEffect(() => {
+  //   let observer = null;
+
+  //   Promise.all(dependencies)
+  //     .then(() => setLoading(false))
+  //     .then(async () => {
+  //       await init(); // Khởi tạo bảng xong
+
+  //       // 1. Đọc dữ liệu từ Storage
+  //       const storedIds = localStorage.getItem("highlight_tasks");
+
+  //       if (storedIds) {
+  //         const idsToHighlight = JSON.parse(storedIds);
+
+  //         // 🔥 QUAN TRỌNG: Xóa ngay lập tức sau khi đã đọc được
+  //         // Để nếu người dùng F5 lại trang thì sẽ không còn thấy màu nữa
+  //         localStorage.removeItem("highlight_tasks");
+
+  //         // 2. Chạy tô màu lần đầu (truyền biến đã đọc vào)
+  //         highlightProcessedTasks(idsToHighlight);
+
+  //         // 3. Thiết lập Observer
+  //         const targetNode =
+  //           document.querySelector(".datamanager") || document.body;
+
+  //         observer = new MutationObserver((mutations) => {
+  //           // Observer dùng lại biến idsToHighlight đang nằm trong bộ nhớ (Closure)
+  //           // Không cần đọc lại từ localStorage nữa (vì đã xóa rồi)
+  //           highlightProcessedTasks(idsToHighlight);
+  //         });
+
+  //         observer.observe(targetNode, {
+  //           childList: true,
+  //           subtree: true,
+  //         });
+
+  //         // (Tùy chọn) Tự ngắt sau 20s để giải phóng bộ nhớ
+  //         setTimeout(() => {
+  //           if (observer) observer.disconnect();
+  //         }, 2000000);
+  //       }
+  //     });
+
+  //   // Cleanup khi component bị hủy
+  //   return () => {
+  //     if (observer) observer.disconnect();
+  //     destroyDM();
+  //   };
+  // }, [init]);
+
+  // Thay thế hàm cũ bằng hàm này
+  const applyRowHighlights = (rows, colorMap) => {
+    // Nếu chưa có danh sách màu tool thì không làm gì cả
+    if (Object.keys(colorMap).length === 0) return;
 
     rows.forEach((row) => {
-      if (row.dataset.highlighted === "true") return;
-
       const cells = row.querySelectorAll(".lsf-table__cell");
-      let isMatch = false;
 
       cells.forEach((cell) => {
-        if (ids.includes(cell.innerText.trim())) {
-          isMatch = true;
+        const cellText = cell.innerText ? cell.innerText.trim() : "";
+
+        // Kiểm tra xem text trong ô có trùng với tên Tool nào không
+        if (colorMap[cellText]) {
+          const baseColor = colorMap[cellText];
+          // Tạo màu nền nhạt (độ đậm 0.2)
+          const bgRgba = hexToRgba(baseColor, 0.2);
+
+          // Tô màu vĩnh viễn (dùng !important để đè CSS mặc định)
+          row.style.setProperty("background-color", bgRgba, "important");
+          row.style.setProperty(
+            "border-left",
+            `4px solid ${baseColor}`,
+            "important"
+          );
         }
       });
-
-      if (isMatch) {
-        row.style.backgroundColor = "#dcfce7";
-        row.style.transition = "background-color 0.3s";
-        row.style.borderLeft = "4px solid #22c55e";
-        row.dataset.highlighted = "true";
-      }
     });
   };
+
   useEffect(() => {
     let observer = null;
 
     Promise.all(dependencies)
       .then(() => setLoading(false))
       .then(async () => {
-        await init(); // Khởi tạo bảng xong
+        await init();
 
-        // 1. Đọc dữ liệu từ Storage
-        const storedIds = localStorage.getItem("highlight_tasks");
+        // 1. Lấy Map màu Tool (DÙNG FETCH THAY VÌ API.CALLAPI)
+        let currentToolMap = {};
+        try {
+          // Gọi trực tiếp đường dẫn API, bỏ qua bộ wrapper bị lỗi
+          const response = await fetch(`/api/tools?project=${project.id}`);
 
-        if (storedIds) {
-          const idsToHighlight = JSON.parse(storedIds);
+          if (response.ok) {
+            const toolsData = await response.json();
+            console.log("📡 Fetch Tools Response:", toolsData);
 
-          // 🔥 QUAN TRỌNG: Xóa ngay lập tức sau khi đã đọc được
-          // Để nếu người dùng F5 lại trang thì sẽ không còn thấy màu nữa
-          localStorage.removeItem("highlight_tasks");
-
-          // 2. Chạy tô màu lần đầu (truyền biến đã đọc vào)
-          highlightProcessedTasks(idsToHighlight);
-
-          // 3. Thiết lập Observer
-          const targetNode =
-            document.querySelector(".datamanager") || document.body;
-
-          observer = new MutationObserver((mutations) => {
-            // Observer dùng lại biến idsToHighlight đang nằm trong bộ nhớ (Closure)
-            // Không cần đọc lại từ localStorage nữa (vì đã xóa rồi)
-            highlightProcessedTasks(idsToHighlight);
-          });
-
-          observer.observe(targetNode, {
-            childList: true,
-            subtree: true,
-          });
-
-          // (Tùy chọn) Tự ngắt sau 20s để giải phóng bộ nhớ
-          setTimeout(() => {
-            if (observer) observer.disconnect();
-          }, 2000000);
+            if (toolsData && Array.isArray(toolsData)) {
+              toolsData.forEach((tool) => {
+                // Backend trả về 'color_data'
+                if (tool.name && tool.color_data) {
+                  currentToolMap[tool.name] = tool.color_data;
+                }
+              });
+              console.log("🎨 Map Màu đã tạo:", currentToolMap);
+            }
+          } else {
+            console.error(
+              "❌ Fetch failed:",
+              response.status,
+              response.statusText
+            );
+          }
+        } catch (err) {
+          console.error("❌ Lỗi gọi API Tools:", err);
         }
+
+        // 2. Hàm kích hoạt tô màu
+        const runHighlight = () => {
+          const rows = document.querySelectorAll(".lsf-table-row");
+          if (rows.length === 0) return;
+
+          // Nếu Map rỗng thì dừng
+          if (Object.keys(currentToolMap).length === 0) return;
+
+          rows.forEach((row) => {
+            const cells = row.querySelectorAll(".lsf-table__cell");
+            cells.forEach((cell) => {
+              // Lấy text và trim() sạch sẽ
+              const cellText = cell.innerText ? cell.innerText.trim() : "";
+
+              if (currentToolMap[cellText]) {
+                const baseColor = currentToolMap[cellText];
+                const bgRgba = hexToRgba(baseColor, 0.2);
+
+                // Tô màu
+                row.style.setProperty("background-color", bgRgba, "important");
+                row.style.setProperty(
+                  "border-left",
+                  `4px solid ${baseColor}`,
+                  "important"
+                );
+              }
+            });
+          });
+        };
+
+        // Chạy ngay vài lần
+        setTimeout(runHighlight, 1000);
+        setTimeout(runHighlight, 3000);
+        setTimeout(runHighlight, 5000);
+
+        // Observer
+        const targetNode =
+          document.querySelector(".datamanager") || document.body;
+        observer = new MutationObserver(() => runHighlight());
+        observer.observe(targetNode, { childList: true, subtree: true });
       });
 
-    // Cleanup khi component bị hủy
     return () => {
       if (observer) observer.disconnect();
       destroyDM();
