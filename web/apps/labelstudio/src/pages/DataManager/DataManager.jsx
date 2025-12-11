@@ -223,24 +223,25 @@ export const DataManagerPage = ({ ...props }) => {
     setContextProps({ dmRef: dataManager });
   }, [projectId]);
 
-  const highlightProcessedTasks = () => {
-    const storedIds = localStorage.getItem("highlight_tasks");
-    if (!storedIds) return; // Nếu không có gì để tô thì thoát ngay
+  const highlightProcessedTasks = (idsToHighlight) => {
+    // Bỏ dòng đọc localStorage ở đây đi
+    // const storedIds = localStorage.getItem("highlight_tasks");
 
-    const idsToHighlight = JSON.parse(storedIds).map(String);
+    if (!idsToHighlight || idsToHighlight.length === 0) return;
 
-    // Lấy tất cả các dòng hiện có trên màn hình
+    // Chuyển ID về string để so sánh (nếu chưa phải string)
+    const ids = idsToHighlight.map(String);
+
     const rows = document.querySelectorAll(".lsf-table-row");
 
     rows.forEach((row) => {
-      // Kiểm tra xem dòng này đã được tô màu chưa để tránh xử lý lặp lại
       if (row.dataset.highlighted === "true") return;
 
       const cells = row.querySelectorAll(".lsf-table__cell");
       let isMatch = false;
 
       cells.forEach((cell) => {
-        if (idsToHighlight.includes(cell.innerText.trim())) {
+        if (ids.includes(cell.innerText.trim())) {
           isMatch = true;
         }
       });
@@ -249,12 +250,10 @@ export const DataManagerPage = ({ ...props }) => {
         row.style.backgroundColor = "#dcfce7";
         row.style.transition = "background-color 0.3s";
         row.style.borderLeft = "4px solid #22c55e";
-        // Đánh dấu là đã xử lý
         row.dataset.highlighted = "true";
       }
     });
   };
-
   useEffect(() => {
     let observer = null;
 
@@ -263,36 +262,47 @@ export const DataManagerPage = ({ ...props }) => {
       .then(async () => {
         await init(); // Khởi tạo bảng xong
 
-        // 1. Kiểm tra xem có cần tô màu không
+        // 1. Đọc dữ liệu từ Storage
         const storedIds = localStorage.getItem("highlight_tasks");
-        if (storedIds) {
-          // Chạy ngay lần đầu tiên
-          highlightProcessedTasks();
 
-          // 2. Thiết lập "Camera an ninh" (MutationObserver)
-          // Nó sẽ theo dõi toàn bộ cái bảng dữ liệu
+        if (storedIds) {
+          const idsToHighlight = JSON.parse(storedIds);
+
+          // 🔥 QUAN TRỌNG: Xóa ngay lập tức sau khi đã đọc được
+          // Để nếu người dùng F5 lại trang thì sẽ không còn thấy màu nữa
+          localStorage.removeItem("highlight_tasks");
+
+          // 2. Chạy tô màu lần đầu (truyền biến đã đọc vào)
+          highlightProcessedTasks(idsToHighlight);
+
+          // 3. Thiết lập Observer
           const targetNode =
             document.querySelector(".datamanager") || document.body;
 
           observer = new MutationObserver((mutations) => {
-            // Hễ có thay đổi HTML (do scroll), chạy lại hàm tô màu
-            highlightProcessedTasks();
+            // Observer dùng lại biến idsToHighlight đang nằm trong bộ nhớ (Closure)
+            // Không cần đọc lại từ localStorage nữa (vì đã xóa rồi)
+            highlightProcessedTasks(idsToHighlight);
           });
 
-          // Bắt đầu theo dõi
           observer.observe(targetNode, {
-            childList: true, // Theo dõi việc thêm/bớt dòng
-            subtree: true, // Theo dõi sâu bên trong các thẻ con
+            childList: true,
+            subtree: true,
           });
+
+          // (Tùy chọn) Tự ngắt sau 20s để giải phóng bộ nhớ
+          setTimeout(() => {
+            if (observer) observer.disconnect();
+          }, 2000000);
         }
       });
 
-    // Cleanup khi component bị hủy (người dùng chuyển trang khác)
+    // Cleanup khi component bị hủy
     return () => {
       if (observer) observer.disconnect();
       destroyDM();
     };
-  }, [init]); // Giữ nguyên dependency
+  }, [init]);
 
   const destroyDM = useCallback(() => {
     if (dataManagerRef.current) {
