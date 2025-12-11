@@ -11,6 +11,7 @@ import { ConfigProvider } from "../providers/ConfigProvider";
 import { MultiProvider } from "../providers/MultiProvider";
 import { ProjectProvider } from "../providers/ProjectProvider";
 import { RoutesProvider } from "../providers/RoutesProvider";
+import { ToolRunningProvider } from "../providers/ToolRunningProvider";
 import { DRAFT_GUARD_KEY, DraftGuard, draftGuardCallback } from "../components/DraftGuard/DraftGuard";
 import { AsyncPage } from "./AsyncPage/AsyncPage";
 import ErrorBoundary from "./ErrorBoundary";
@@ -71,6 +72,7 @@ const App = ({ content }) => {
             <ConfigProvider key="config" />,
             <RoutesProvider key="rotes" />,
             <ProjectProvider key="project" />,
+            <ToolRunningProvider key="tool-running" />,
             ff.isActive(ff.FF_PRODUCT_TOUR) && <TourProvider useAPI={useAPI} />,
           ].filter(Boolean)}
         >

@@ -11,6 +11,6 @@ urlpatterns = [
     # Retrieve, Update, Delete tool
     path('api/tools/<int:pk>', ToolAPI.as_view(), name='tool-detail'),
     
-    # Run tool endpoint
+    # Run tool endpoint (supports webhook streaming via use_webhook parameter)
     path('api/tools/<int:pk>/run', ToolRunAPI.as_view(), name='tool-run'),
 ]

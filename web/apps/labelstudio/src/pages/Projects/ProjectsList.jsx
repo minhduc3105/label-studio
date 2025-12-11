@@ -3,10 +3,11 @@ import { format } from "date-fns";
 import { useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import { IconCheck, IconEllipsis, IconMinus, IconSparks } from "@humansignal/icons";
-import { Userpic, Button } from "@humansignal/ui";
+import { Userpic, Button, Spinner } from "@humansignal/ui";
 import { Dropdown, Menu, Pagination } from "../../components";
 import { Block, Elem } from "../../utils/bem";
 import { absoluteURL } from "../../utils/helpers";
+import { useToolRunning } from "../../providers/ToolRunningProvider";
 
 const DEFAULT_CARD_COLORS = ["#FFFFFF", "#FDFDFC"];
 
@@ -50,6 +51,10 @@ export const EmptyProjectsList = ({ openModal }) => {
 };
 
 const ProjectCard = ({ project }) => {
+  const { isToolRunning, getRunningToolsCount } = useToolRunning();
+  const hasRunningTools = isToolRunning(project.id);
+  const runningCount = getRunningToolsCount(project.id);
+
   const color = useMemo(() => {
     return DEFAULT_CARD_COLORS.includes(project.color) ? null : project.color;
   }, [project]);
@@ -71,9 +76,33 @@ const ProjectCard = ({ project }) => {
 
   return (
     <Elem tag={NavLink} name="link" to={`/projects/${project.id}/data`} data-external>
-      <Block name="project-card" mod={{ colored: !!color }} style={projectColors}>
+      <Block name="project-card" mod={{ colored: !!color, running: hasRunningTools }} style={projectColors}>
         <Elem name="header">
           <Elem name="title">
+            {hasRunningTools && (
+              <Elem 
+                name="tool-running-indicator"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginRight: '8px',
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                }}
+              >
+                <Spinner size="small" style={{ width: '14px', height: '14px' }} />
+                <span style={{ 
+                  fontSize: '12px', 
+                  fontWeight: '500',
+                  color: '#3b82f6'
+                }}>
+                  {runningCount} tool{runningCount > 1 ? 's' : ''} running
+                </span>
+              </Elem>
+            )}
             <Elem name="title-text">{project.title ?? "New project"}</Elem>
 
             <Elem

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import {
   Button,
   Typography,
@@ -12,6 +12,7 @@ import { modal } from "../../../components/Modal/Modal";
 import { IconSettings } from "@humansignal/icons";
 import { useAPI } from "../../../providers/ApiProvider";
 import { ProjectContext } from "../../../providers/ProjectProvider";
+import { useToolRunning } from "../../../providers/ToolRunningProvider";
 import { ToolSettingsForm } from "./Forms";
 import { ToolList } from "./ToolList";
 import "./ToolSettings.scss";
@@ -19,11 +20,13 @@ import "./ToolSettings.scss";
 export const ToolSettings = () => {
   const api = useAPI();
   const { project, fetchProject } = useContext(ProjectContext);
+  const { setToolRunning, isToolRunning } = useToolRunning();
 
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [runningTools, setRunningTools] = useState({});
+  const eventSourceRef = useRef(null);
 
   useUpdatePageTitle(
     createTitleFromSegments([project?.title, "Tool Settings"])
@@ -160,16 +163,17 @@ export const ToolSettings = () => {
   // === HÀM 4: CHẠY TOOL (RUN) ===
   const handleRunTool = useCallback(
     async (tool) => {
-      let loadingModalRef;
+      setRunningTools((prev) => ({ ...prev, [tool.id]: true }));
+      setToolRunning(project.id, tool.id, true);
 
-      loadingModalRef = modal({
+      // Show initial notification modal (can be closed)
+      const initialModalRef = modal({
         title: "",
         style: { width: 480, textAlign: "center" },
-        closeOnClickOutside: false,
+        closeOnClickOutside: true,
         bare: true,
         body: (
           <div style={{ padding: "3rem 2rem" }}>
-            {/* Animated Icon */}
             <div
               style={{
                 marginBottom: "2rem",
@@ -193,8 +197,6 @@ export const ToolSettings = () => {
                 <Spinner size={40} style={{ color: "white" }} />
               </div>
             </div>
-
-            {/* Title */}
             <Typography
               variant="body"
               size="large"
@@ -205,10 +207,8 @@ export const ToolSettings = () => {
                 color: "#1e293b",
               }}
             >
-              Running Tool
+              Tool Started
             </Typography>
-
-            {/* Tool Name */}
             <Typography
               variant="body"
               size="medium"
@@ -220,48 +220,38 @@ export const ToolSettings = () => {
             >
               {tool.name}
             </Typography>
-
-            {/* Description */}
             <Typography
               variant="body"
               size="small"
-              className="text-neutral-content-subtler"
               style={{
-                marginBottom: "2rem",
+                marginBottom: "1rem",
                 color: "#94a3b8",
                 fontSize: "13px",
               }}
             >
-              Please wait while we process your request...
+              Running in background... You can close this and continue working.
             </Typography>
-
-            {/* Animated Loading Bar */}
-            <div
+            <Typography
+              variant="body"
+              size="small"
               style={{
-                height: "6px",
-                backgroundColor: "#e2e8f0",
-                borderRadius: "3px",
-                overflow: "hidden",
-                position: "relative",
+                color: "#3b82f6",
+                fontSize: "12px",
+                fontWeight: "600",
               }}
             >
-              <div
-                style={{
-                  height: "100%",
-                  background:
-                    "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
-                  animation: "loading-bar-slide 1.5s ease-in-out infinite",
-                  width: "40%",
-                  borderRadius: "3px",
-                }}
-              />
-            </div>
+              💡 Check the loading indicator at the top-left
+            </Typography>
           </div>
         ),
       });
 
-      setRunningTools((prev) => ({ ...prev, [tool.id]: true }));
+      // Auto-close the initial modal after 3 seconds
+      setTimeout(() => {
+        initialModalRef?.close();
+      }, 3000);
 
+      // Run the tool in background
       try {
         const url = `/api/tools/${tool.id}/run`;
         const resp = await fetch(url, {
@@ -281,10 +271,7 @@ export const ToolSettings = () => {
 
         const result = await resp.json();
 
-        // Close loading modal
-        loadingModalRef?.close();
-
-        // Show beautiful success modal
+        // Show success modal
         const successModalRef = modal({
           title: "",
           style: { width: 520 },
@@ -416,10 +403,7 @@ export const ToolSettings = () => {
           window.location.reload(); // Refresh the entire page
         }, 3000);
       } catch (e) {
-        // Close loading modal
-        loadingModalRef?.close();
-
-        // Show beautiful error modal
+        // Show error modal
         modal({
           title: "",
           style: { width: 500 },
@@ -510,6 +494,7 @@ export const ToolSettings = () => {
         });
       } finally {
         setRunningTools((prev) => ({ ...prev, [tool.id]: false }));
+        setToolRunning(project.id, tool.id, false);
       }
     },
     [buildAuthHeaders]

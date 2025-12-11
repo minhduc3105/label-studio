@@ -15,6 +15,8 @@ from rest_framework import generics, status
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from rest_framework.views import APIView
+from django.http import StreamingHttpResponse
 
 from django.conf import settings
 import json
@@ -529,7 +531,142 @@ class ToolRunAPI(generics.GenericAPIView):
         }
         return payload, None
 
-
+    def _receive_webhook_stream(self, endpoint_url, tool, project, user, payload):
+        """
+        Receive and process streaming webhook data from external tool.
+        Handles SSE (Server-Sent Events) format.
+        
+        Args:
+            endpoint_url: URL of the external tool webhook
+            tool: Tool instance
+            project: Project instance
+            user: User instance
+            payload: Data to send to the webhook endpoint
+            
+        Returns:
+            dict: Summary with updated/failed task counts
+        """
+        from_name, to_name, tag_type, valid_choices = self._get_labeling_config_details(project)
+        
+        if not from_name or not to_name:
+            logger.error("Labeling config details not found or unsupported.")
+            return {"updated": 0, "failed": [], "error": "Invalid labeling config"}
+        
+        tool_name = getattr(tool, 'title', getattr(tool, 'name', f'Tool {tool.id}'))
+        updated_tasks = []
+        failed_tasks = []
+        
+        try:
+            # Make streaming request with payload
+            headers = {'Content-Type': 'application/json'}
+            with requests.post(endpoint_url, json=payload, stream=True, timeout=300, headers=headers) as response:
+                response.raise_for_status()
+                
+                # Process SSE stream line by line
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    
+                    line = line.decode('utf-8').strip()
+                    
+                    # Parse SSE format: "data: {json}"
+                    if line.startswith('data:'):
+                        data_str = line[5:].strip()
+                        
+                        try:
+                            event_data = json.loads(data_str)
+                            
+                            # Skip completion events
+                            if event_data.get('event') == 'done':
+                                logger.info(f"Webhook completed: {event_data}")
+                                break
+                            
+                            # Process label result
+                            if 'result' in event_data:
+                                result = event_data['result']
+                                task_id = result.get('id')
+                                label = result.get('label')
+                                
+                                if not task_id or not label:
+                                    continue
+                                
+                                # Validate label
+                                if valid_choices and label not in valid_choices:
+                                    failed_tasks.append({
+                                        "id": task_id, 
+                                        "reason": f"Invalid label: {label}"
+                                    })
+                                    continue
+                                
+                                # Get additional info
+                                more_info_data = result.copy()
+                                [more_info_data.pop(k, None) for k in ["id", "label", "data"]]
+                                
+                                try:
+                                    task = Task.objects.get(id=task_id, project=project)
+                                    
+                                    # Update task data
+                                    current_data = task.data if task.data else {}
+                                    if more_info_data:
+                                        current_data.update(more_info_data)
+                                    current_data['labeled_by_tool'] = tool_name
+                                    if 'data' in result:
+                                        current_data['original_data'] = result['data']
+                                    
+                                    task.data = current_data
+                                    task.save(update_fields=['data'])
+                                    
+                                    # Create annotation
+                                    result_json = [{
+                                        "from_name": from_name,
+                                        "to_name": to_name,
+                                        "type": tag_type,
+                                        "value": {tag_type: [label]}
+                                    }]
+                                    
+                                    Annotation.objects.update_or_create(
+                                        task=task,
+                                        completed_by=user,
+                                        project=project,
+                                        defaults={
+                                            'result': result_json,
+                                            'was_cancelled': False,
+                                        }
+                                    )
+                                    
+                                    updated_tasks.append(task_id)
+                                    logger.info(f"Updated task {task_id} with label {label}")
+                                    
+                                except Task.DoesNotExist:
+                                    failed_tasks.append({
+                                        "id": task_id, 
+                                        "reason": "Task not found"
+                                    })
+                                except Exception as e:
+                                    failed_tasks.append({
+                                        "id": task_id, 
+                                        "reason": str(e)
+                                    })
+                                    logger.error(f"Failed to update task {task_id}: {e}")
+                        
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Failed to parse SSE data: {data_str}")
+                            continue
+            
+            return {
+                "updated": len(updated_tasks),
+                "updated_tasks_id": updated_tasks,
+                "failed": failed_tasks
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Webhook request failed: {e}")
+            return {
+                "updated": len(updated_tasks),
+                "updated_tasks_id": updated_tasks,
+                "failed": failed_tasks,
+                "error": str(e)
+            }
 
     def post(self, request, *args, **kwargs):
         tool = self.get_object() 
@@ -550,16 +687,42 @@ class ToolRunAPI(generics.GenericAPIView):
             headers = {'Content-Type': 'application/json'}
             logger.info(f'Calling tool {tool.id}: {endpoint_url}')
             
+            # Make initial request and check if it's streaming
             resp = requests.post(
                 endpoint_url, 
                 json=payload, 
-                timeout=30,
-                headers=headers
+                timeout=5,
+                headers=headers,
+                stream=True
             )
             resp.raise_for_status()
 
-            logger.info(f"Response: {resp}")
-
+            # Check if response is Server-Sent Events
+            content_type = resp.headers.get('Content-Type', '')
+            is_sse = 'text/event-stream' in content_type
+            
+            if is_sse:
+                # Use webhook streaming mode
+                logger.info(f"Detected SSE stream from {endpoint_url}")
+                resp.close()  # Close initial connection
+                
+                # Reconnect with full streaming handling
+                update_summary = self._receive_webhook_stream(
+                    endpoint_url,
+                    tool,
+                    project,
+                    request.user,
+                    payload
+                )
+                
+                return Response({
+                    "status": "success",
+                    "auto_label_summary": update_summary
+                }, status=status.HTTP_200_OK)
+            
+            # Standard non-streaming mode
+            logger.info(f"Using standard mode for {endpoint_url}")
+            
             try:
                 external_output = resp.json()
             except ValueError:
@@ -578,12 +741,11 @@ class ToolRunAPI(generics.GenericAPIView):
                 "status": "success",
                 "data": external_output,
                 "auto_label_summary": update_summary
-            }
-                , status=status.HTTP_200_OK)
+            }, status=status.HTTP_200_OK)
 
         except requests.exceptions.RequestException as e:
             logger.error(f'Tool request failed: {e}')
             return Response({'error': 'Failed to call tool', 'details': str(e)}, status=502)
         except Exception as e:
             logger.error(f'Tool execution error: {e}', exc_info=True)
-            return Response({'error': 'Internal server error', 'details': str(e)}, status=500)  
+            return Response({'error': 'Internal server error', 'details': str(e)}, status=500)

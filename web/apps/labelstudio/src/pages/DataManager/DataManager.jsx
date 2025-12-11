@@ -19,6 +19,7 @@ import { modal } from "../../components/Modal/Modal";
 import { Space } from "../../components/Space/Space";
 import { useAPI } from "../../providers/ApiProvider";
 import { useProject } from "../../providers/ProjectProvider";
+import { useToolRunning } from "../../providers/ToolRunningProvider";
 import { useContextProps, useParams } from "../../providers/RoutesProvider";
 import { addCrumb, deleteCrumb } from "../../services/breadrumbs";
 import { Block, Elem } from "../../utils/bem";
@@ -102,13 +103,17 @@ export const DataManagerPage = ({ ...props }) => {
   const history = useHistory();
   const api = useAPI();
   const { project } = useProject();
+  const { isToolRunning, getRunningToolsCount } = useToolRunning();
   const setContextProps = useContextProps();
   const [crashed, setCrashed] = useState(false);
   const [loading, setLoading] = useState(
     !window.DataManager || !window.LabelStudio
   );
+  const [runningToolName, setRunningToolName] = useState(null);
   const dataManagerRef = useRef();
   const projectId = project?.id;
+  const hasRunningTools = project?.id ? isToolRunning(project.id) : false;
+  const runningCount = project?.id ? getRunningToolsCount(project.id) : 0;
 
   const init = useCallback(async () => {
     if (!window.LabelStudio) return;
@@ -453,6 +458,22 @@ export const DataManagerPage = ({ ...props }) => {
       .then(init);
   }, [init]);
 
+  // Fetch tool name when tools are running
+  useEffect(() => {
+    if (hasRunningTools && project?.id) {
+      fetch(`/api/tools?project=${project.id}`)
+        .then(res => res.json())
+        .then(tools => {
+          if (tools && tools.length > 0) {
+            setRunningToolName(tools[0].name);
+          }
+        })
+        .catch(err => console.error('Failed to fetch tool names:', err));
+    } else {
+      setRunningToolName(null);
+    }
+  }, [hasRunningTools, project?.id]);
+
   useEffect(() => {
     // destroy the data manager when the component is unmounted
     return () => destroyDM();
@@ -473,8 +494,69 @@ export const DataManagerPage = ({ ...props }) => {
           <Spinner size={64} />
         </div>
       )}
+      
+      {/* Tool Running Indicator - Floating at top left */}
+      {hasRunningTools && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '70px',
+            left: '20px',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px 20px',
+            backgroundColor: 'rgba(59, 130, 246, 0.95)',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            animation: 'slideInLeft 0.3s ease-out',
+          }}
+        >
+          <Spinner 
+            size="small" 
+            style={{ 
+              width: '20px', 
+              height: '20px',
+              color: 'white',
+            }} 
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span style={{ 
+              color: 'white', 
+              fontWeight: '600',
+              fontSize: '14px',
+              lineHeight: '1.2',
+            }}>
+              Tool Running
+            </span>
+            <span style={{ 
+              color: 'rgba(255, 255, 255, 0.9)', 
+              fontSize: '12px',
+              lineHeight: '1.2',
+            }}>
+              {runningToolName || `${runningCount} tool${runningCount > 1 ? 's' : ''} active`}
+            </span>
+          </div>
+        </div>
+      )}
+      
       {/* Allow this to exist before the DataManager is initialized as the async app.fetchData call eventually calls startLabeling, and that requires the root element to exist */}
       <Block ref={root} name="datamanager" />
+      
+      <style>{`
+        @keyframes slideInLeft {
+          from {
+            opacity: 0;
+            transform: translateX(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
     </>
   );
 };
