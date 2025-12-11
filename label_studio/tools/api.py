@@ -183,7 +183,7 @@ class ToolListAPI(generics.ListCreateAPIView):
 
         # 2. Sinh màu mới khác biệt và đảm bảo độ tương phản
         new_color = generate_distinct_light_color(existing_colors)
-        serializer.save(project=project)
+        serializer.save(project=project, color_data=new_color)
 
 
 @method_decorator(
