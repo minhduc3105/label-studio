@@ -202,6 +202,14 @@ const ToolModalContent = ({
       const result = await resp.json();
       setRunResult(result);
 
+      const processedIds = result.auto_label_summary?.updated_tasks_id || [];
+
+      console.log("Tasks processed:", processedIds);
+
+      if (processedIds.length > 0) {
+        localStorage.setItem("highlight_tasks", JSON.stringify(processedIds));
+      }
+
       // Auto-refresh page after 3 seconds on success
       setTimeout(() => {
         closeModal();

@@ -1,5 +1,17 @@
-import { Button, buttonVariant, ToastContext, ToastType } from "@humansignal/ui";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Button,
+  buttonVariant,
+  ToastContext,
+  ToastType,
+} from "@humansignal/ui";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { generatePath, useHistory } from "react-router";
 import { Link, NavLink } from "react-router-dom";
 import { Spinner } from "../../components";
@@ -17,10 +29,14 @@ import { APIConfig } from "./api-config";
 
 import "./DataManager.scss";
 
-const loadDependencies = () => [import("@humansignal/datamanager"), import("@humansignal/editor")];
+const loadDependencies = () => [
+  import("@humansignal/datamanager"),
+  import("@humansignal/editor"),
+];
 
 const initializeDataManager = async (root, props, params) => {
-  if (!window.LabelStudio) throw Error("Label Studio Frontend doesn't exist on the page");
+  if (!window.LabelStudio)
+    throw Error("Label Studio Frontend doesn't exist on the page");
   if (!root && root.dataset.dmInitialized) return;
 
   root.dataset.dmInitialized = true;
@@ -67,7 +83,9 @@ export const DataManagerPage = ({ ...props }) => {
   const { project } = useProject();
   const setContextProps = useContextProps();
   const [crashed, setCrashed] = useState(false);
-  const [loading, setLoading] = useState(!window.DataManager || !window.LabelStudio);
+  const [loading, setLoading] = useState(
+    !window.DataManager || !window.LabelStudio
+  );
   const dataManagerRef = useRef();
   const projectId = project?.id;
 
@@ -82,7 +100,9 @@ export const DataManagerPage = ({ ...props }) => {
       params: { project: project.id },
     });
 
-    const interactiveBacked = (mlBackends ?? []).find(({ is_interactive }) => is_interactive);
+    const interactiveBacked = (mlBackends ?? []).find(
+      ({ is_interactive }) => is_interactive
+    );
 
     const dataManager = (dataManagerRef.current =
       dataManagerRef.current ??
@@ -119,20 +139,30 @@ export const DataManagerPage = ({ ...props }) => {
     });
 
     dataManager.on("settingsClicked", () => {
-      history.push(buildLink("/settings/labeling", { id: params?.id ?? project?.id }));
+      history.push(
+        buildLink("/settings/labeling", { id: params?.id ?? project?.id })
+      );
     });
 
     dataManager.on("importClicked", () => {
-      history.push(buildLink("/data/import", { id: params?.id ?? project?.id }));
+      history.push(
+        buildLink("/data/import", { id: params?.id ?? project?.id })
+      );
     });
 
     // Navigate to Storage Settings and auto-open Add Source Storage modal
     dataManager.on("openSourceStorageModal", () => {
-      history.push(buildLink("/settings/storage?open=source", { id: params?.id ?? project?.id }));
+      history.push(
+        buildLink("/settings/storage?open=source", {
+          id: params?.id ?? project?.id,
+        })
+      );
     });
 
     dataManager.on("exportClicked", () => {
-      history.push(buildLink("/data/export", { id: params?.id ?? project?.id }));
+      history.push(
+        buildLink("/data/export", { id: params?.id ?? project?.id })
+      );
     });
 
     dataManager.on("error", (response) => {
@@ -146,7 +176,8 @@ export const DataManagerPage = ({ ...props }) => {
     dataManager.on("navigate", (route) => {
       const target = route.replace(/^projects/, "");
 
-      if (target) history.push(buildLink(target, { id: params?.id ?? project?.id }));
+      if (target)
+        history.push(buildLink(target, { id: params?.id ?? project?.id }));
       else history.push("/projects");
     });
 
@@ -154,7 +185,9 @@ export const DataManagerPage = ({ ...props }) => {
       dataManager.on("lsf:regionFinishedDrawing", (reg, group) => {
         const { lsf, task, currentAnnotation: annotation } = dataManager.lsf;
         const ids = group.map((r) => r.cleanId);
-        const result = annotation.serializeAnnotation().filter((res) => ids.includes(res.id));
+        const result = annotation
+          .serializeAnnotation()
+          .filter((res) => ids.includes(res.id));
 
         const suggestionsRequest = api.callApi("mlInteractive", {
           params: { pk: interactiveBacked.id },
@@ -189,6 +222,77 @@ export const DataManagerPage = ({ ...props }) => {
 
     setContextProps({ dmRef: dataManager });
   }, [projectId]);
+
+  const highlightProcessedTasks = () => {
+    const storedIds = localStorage.getItem("highlight_tasks");
+    if (!storedIds) return; // Nếu không có gì để tô thì thoát ngay
+
+    const idsToHighlight = JSON.parse(storedIds).map(String);
+
+    // Lấy tất cả các dòng hiện có trên màn hình
+    const rows = document.querySelectorAll(".lsf-table-row");
+
+    rows.forEach((row) => {
+      // Kiểm tra xem dòng này đã được tô màu chưa để tránh xử lý lặp lại
+      if (row.dataset.highlighted === "true") return;
+
+      const cells = row.querySelectorAll(".lsf-table__cell");
+      let isMatch = false;
+
+      cells.forEach((cell) => {
+        if (idsToHighlight.includes(cell.innerText.trim())) {
+          isMatch = true;
+        }
+      });
+
+      if (isMatch) {
+        row.style.backgroundColor = "#dcfce7";
+        row.style.transition = "background-color 0.3s";
+        row.style.borderLeft = "4px solid #22c55e";
+        // Đánh dấu là đã xử lý
+        row.dataset.highlighted = "true";
+      }
+    });
+  };
+
+  useEffect(() => {
+    let observer = null;
+
+    Promise.all(dependencies)
+      .then(() => setLoading(false))
+      .then(async () => {
+        await init(); // Khởi tạo bảng xong
+
+        // 1. Kiểm tra xem có cần tô màu không
+        const storedIds = localStorage.getItem("highlight_tasks");
+        if (storedIds) {
+          // Chạy ngay lần đầu tiên
+          highlightProcessedTasks();
+
+          // 2. Thiết lập "Camera an ninh" (MutationObserver)
+          // Nó sẽ theo dõi toàn bộ cái bảng dữ liệu
+          const targetNode =
+            document.querySelector(".datamanager") || document.body;
+
+          observer = new MutationObserver((mutations) => {
+            // Hễ có thay đổi HTML (do scroll), chạy lại hàm tô màu
+            highlightProcessedTasks();
+          });
+
+          // Bắt đầu theo dõi
+          observer.observe(targetNode, {
+            childList: true, // Theo dõi việc thêm/bớt dòng
+            subtree: true, // Theo dõi sâu bên trong các thẻ con
+          });
+        }
+      });
+
+    // Cleanup khi component bị hủy (người dùng chuyển trang khác)
+    return () => {
+      if (observer) observer.disconnect();
+      destroyDM();
+    };
+  }, [init]); // Giữ nguyên dependency
 
   const destroyDM = useCallback(() => {
     if (dataManagerRef.current) {

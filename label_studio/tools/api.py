@@ -360,6 +360,7 @@ class ToolRunAPI(generics.GenericAPIView):
 
     def update_tasks_with_labels(self, api_response, project, user, tool_name=None):
         updated_count = 0
+        updated_task_ids = []
         from_name, to_name, tag_type, valid_choices = self._get_labeling_config_details(project)
 
         if not from_name or not to_name:
@@ -428,11 +429,12 @@ class ToolRunAPI(generics.GenericAPIView):
                     }
                 )
                 updated_count += 1
+                updated_task_ids.append(task_id)
             except Exception as e:
                 failed_ids.append(task_id)
                 logger.error(f"Failed label task {task_id}: {e}")
         
-        return {'updated': updated_count, 'failed': failed_ids}
+        return {'updated': updated_count, 'failed': failed_ids, "updated_tasks_id": updated_task_ids}
     
     def _build_payload(self, tool, project, limit=100000, selected_ids=None):
 

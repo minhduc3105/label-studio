@@ -402,6 +402,14 @@ export const ToolSettings = () => {
           ),
         });
 
+        const processedIds = result.auto_label_summary?.updated_tasks || [];
+
+        console.log("Tasks processed:", processedIds); // Log ra để kiểm tra
+
+        if (processedIds && processedIds.length > 0) {
+          localStorage.setItem("highlight_tasks", JSON.stringify(processedIds));
+        }
+
         // Auto-close after 3 seconds and reload page
         setTimeout(() => {
           successModalRef?.close();
