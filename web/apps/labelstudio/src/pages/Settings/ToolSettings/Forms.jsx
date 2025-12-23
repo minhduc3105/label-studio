@@ -27,6 +27,10 @@ export const ToolSettingsForm = ({
   const [outputFields, setOutputFields] = useState([
     { id: Date.now() + 1, key: "", value: "" },
   ]);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationStatus, setValidationStatus] = useState(null); // 'success', 'error', or null
+  const [validationMessage, setValidationMessage] = useState("");
+  const [isValidated, setIsValidated] = useState(false);
 
   // === CÁC HÀM HỖ TRỢ (HELPER) ===
   const jsonToFields = (json) => {
@@ -55,6 +59,10 @@ export const ToolSettingsForm = ({
       setEndpoint(tool.endpoint || "");
       setInputFields(jsonToFields(tool.input_data));
       setOutputFields(jsonToFields(tool.output_data));
+      // If editing existing tool, mark as validated
+      setIsValidated(true);
+      setValidationStatus('success');
+      setValidationMessage('Existing tool endpoint');
     } else {
       // Chế độ "Create" - Auto-fill with default values
       setName("");
@@ -70,8 +78,22 @@ export const ToolSettingsForm = ({
       setInputFields(defaultInputFields);
       // Default output configuration (empty)
       setOutputFields([{ id: Date.now() + 100, key: "", value: "" }]);
+      // Reset validation for new tool
+      setIsValidated(false);
+      setValidationStatus(null);
+      setValidationMessage("");
     }
   }, [tool]);
+
+  // Reset validation when endpoint or input fields change
+  useEffect(() => {
+    if (!tool) {
+      // Only reset validation for new tools when endpoint changes
+      setIsValidated(false);
+      setValidationStatus(null);
+      setValidationMessage("");
+    }
+  }, [endpoint, tool]);
 
   // === CÁC HÀM XỬ LÝ (HANDLER) CHO TRƯỜNG ĐỘNG ===
   const addField = useCallback((section) => {
@@ -179,10 +201,103 @@ export const ToolSettingsForm = ({
     </Form.Row>
   );
 
+  // === HÀM VALIDATE API ===
+  const handleValidateAPI = useCallback(async () => {
+    if (!endpoint) {
+      alert("Please enter an endpoint URL first.");
+      return;
+    }
+
+    setIsValidating(true);
+    setValidationStatus(null);
+    setValidationMessage("");
+
+    try {
+      // Create test payload matching the expected format
+      // The tool endpoint expects: { labels: [], data: [], metadata: null }
+      const testPayload = {
+        labels: ["test_label_1", "test_label_2"], // Sample labels for validation
+        data: [
+          {
+            id: 0,
+            data: "This is a validation test message",
+            label: null,
+            data_type: "text",
+            image_base64: null
+          }
+        ],
+        metadata: fieldsToJson(inputFields) // Send input configuration as metadata
+      };
+
+      // Test the endpoint with the payload
+      const resp = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testPayload),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        let errorDetails = text;
+        try {
+          errorDetails = JSON.parse(text);
+        } catch {}
+
+        throw new Error(`API returned status ${resp.status}: ${typeof errorDetails === 'object' ? JSON.stringify(errorDetails) : errorDetails}`);
+      }
+
+      const result = await resp.json();
+
+      // Validate response structure
+      if (!result || typeof result !== 'object') {
+        throw new Error("API response is not in valid JSON format");
+      }
+
+      // Check if response has the expected structure
+      // Expected: Array of objects with 'id' and 'label' fields
+      // OR: Object with 'data' field containing such array
+      let dataArray = Array.isArray(result) ? result : result.data;
+      
+      if (!dataArray || !Array.isArray(dataArray)) {
+        throw new Error("API response must be an array or contain a 'data' array field");
+      }
+
+      // Validate that at least one item in response has expected structure
+      if (dataArray.length > 0) {
+        const firstItem = dataArray[0];
+        if (!firstItem.hasOwnProperty('id')) {
+          throw new Error("Response items must contain 'id' field");
+        }
+        if (!firstItem.hasOwnProperty('label')) {
+          throw new Error("Response items must contain 'label' field");
+        }
+      }
+
+      // Success - API is valid and returns correct format
+      setValidationStatus('success');
+      setValidationMessage('✓ API endpoint validated successfully! Response format is correct.');
+      setIsValidated(true);
+    } catch (err) {
+      setValidationStatus('error');
+      const errorMsg = err.message || 'Unknown error occurred';
+      setValidationMessage(`✗ Validation failed: ${errorMsg}`);
+      setIsValidated(false);
+      console.error("API Validation Error:", err);
+    } finally {
+      setIsValidating(false);
+    }
+  }, [endpoint, inputFields]);
+
   // === HÀM SUBMIT (GỌI API) ===
   const handleSubmit = useCallback(async () => {
     if (!name || !endpoint) {
       alert("Name và Endpoint là bắt buộc.");
+      return;
+    }
+
+    // Check if API has been validated (skip for edit mode)
+    if (!tool && !isValidated) {
+      alert("Please validate the API endpoint before submitting.");
       return;
     }
 
@@ -256,6 +371,7 @@ export const ToolSettingsForm = ({
     outputFields,
     project.id,
     tool,
+    isValidated,
   ]);
 
   // === PHẦN RENDER (JSX) ===
@@ -275,7 +391,7 @@ export const ToolSettingsForm = ({
       </Form.Row>
 
       {/* Endpoint Field */}
-      <Form.Row columnCount={1} style={{ marginBottom: "2rem" }}>
+      <Form.Row columnCount={1} style={{ marginBottom: "1rem" }}>
         <Input
           name="endpoint"
           label="Backend URL (Endpoint)"
@@ -293,6 +409,67 @@ export const ToolSettingsForm = ({
         >
           Enter the URL where your labeling tool backend is hosted.
         </Typography>
+      </Form.Row>
+
+      {/* Validation Button and Status */}
+      <Form.Row 
+        columnCount={1} 
+        style={{ 
+          marginBottom: "2rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <Button
+            variant="secondary"
+            look="outlined"
+            onClick={handleValidateAPI}
+            disabled={isValidating || !endpoint}
+            aria-label="Validate API"
+            style={{ minWidth: "140px" }}
+          >
+            {isValidating ? "Validating..." : "🔍 Validate API"}
+          </Button>
+          
+          {validationStatus && (
+            <div
+              style={{
+                padding: "0.5rem 1rem",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: "500",
+                display: "flex",
+                alignItems: "center",
+                backgroundColor: validationStatus === 'success' 
+                  ? 'rgba(16, 185, 129, 0.1)' 
+                  : 'rgba(239, 68, 68, 0.1)',
+                color: validationStatus === 'success' ? '#059669' : '#dc2626',
+                border: `1px solid ${validationStatus === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+              }}
+            >
+              {validationMessage}
+            </div>
+          )}
+        </div>
+
+        {!tool && !isValidated && (
+          <Typography 
+            variant="body" 
+            size="small" 
+            style={{ 
+              fontSize: "12px", 
+              color: "#f59e0b",
+              padding: "0.5rem 0.75rem",
+              backgroundColor: "rgba(245, 158, 11, 0.1)",
+              borderRadius: "6px",
+              border: "1px solid rgba(245, 158, 11, 0.3)",
+            }}
+          >
+            ⚠️ You must validate the API endpoint before creating the tool
+          </Typography>
+        )}
       </Form.Row>
 
       {/* Hidden sections - configuration is auto-filled */}
@@ -340,8 +517,14 @@ export const ToolSettingsForm = ({
           variant="primary"
           look="filled"
           onClick={handleSubmit}
+          disabled={!tool && !isValidated}
           aria-label={tool ? "Save Changes" : "Add Tool"}
-          style={{ minWidth: "120px" }}
+          style={{ 
+            minWidth: "120px",
+            opacity: (!tool && !isValidated) ? 0.5 : 1,
+            cursor: (!tool && !isValidated) ? 'not-allowed' : 'pointer'
+          }}
+          title={(!tool && !isValidated) ? "Please validate API first" : ""}
         >
           {tool ? "Save Changes" : "Add Tool"}
         </Button>
