@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1001,
+    "result": [
+      {
+        "from_name": "label",
+        "to_name": "image",
+        "type": "choices",
+        "value": {
+          "choices": ["Cat"],
+          "score": 0.95
+        }
+      }
+    ],
+    "metadata": {
+      "model_version": "yolo_v8_finetuned",
+      "confidence_score": 0.95,
+      "processing_time_ms": 120,
+      "tool_name": "My Custom AI Service",
+      "custom_info": "Detected under low light"
+    },
+
+    "data": {
+      "ocr_text": "Cleaned text content..."
+    }
+  },
+
+  {
+    "id": 1002,
+    "result": [
+      {
+        "from_name": "label",
+        "to_name": "image",
+        "type": "rectanglelabels",
+        "value": {
+          "x": 10.5,
+          "y": 20.1,
+          "width": 30.0,
+          "height": 40.0,
+          "rotation": 0,
+          "rectanglelabels": ["Car"]
+        }
+      }
+    ],
+    "metadata": { "model_version": "v2" }
+  }
+]

@@ -1,6 +1,7 @@
 """This file and its contents are licensed under the Apache License 2.0. Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
 """
 import logging
+import mimetypes
 import requests
 import xml.etree.ElementTree as ET
 import base64
@@ -288,246 +289,314 @@ class ToolRunAPI(generics.GenericAPIView):
     serializer_class = ToolSerializer
     queryset = Tool.objects.all()
 
-    def _collect_tasks_from_project(self, project, limit=None, selected_ids=None):
-        target_data_key = None
+    def _encode_file(self, file_path):
+        """
+        Reads a local file and encodes it into a Base64 Data URI string.
+        
+        Args:
+            file_path (str): Relative path to the file (e.g., "uploads/images/abc.jpg")
+            
+        Returns:
+            str: Data URI string (e.g., "data:image/jpeg;base64,iVBORw...") or None if failed.
+        """
+        if not file_path or not isinstance(file_path, str):
+            return None
+        
+        # Construct absolute system path based on Django settings
+        media_root = getattr(settings, 'MEDIA_ROOT', '')
+        clean_path = str(file_path)
+        media_url = getattr(settings, 'MEDIA_URL', '/media/')
+        
+        # Remove media URL prefix if present to get the raw relative path
+        if clean_path.startswith(media_url):
+            clean_path = clean_path.replace(media_url, '', 1)
+
+        full_path = os.path.join(media_root, clean_path)
+
+        # Check if file exists on the server filesystem
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            return file_path # Return original string if file not found
+
+        # Detect MIME type (e.g., image/png, audio/mp3)
+        mime_type, _ = mimetypes.guess_type(full_path)
+        if not mime_type:
+            mime_type = 'application/octet-stream'
+
+        try:
+            # Read binary file and encode
+            with open(full_path, "rb") as f:
+                encoded_string = base64.b64encode(f.read()).decode('utf-8')
+                return f"data:{mime_type};base64,{encoded_string}"
+        except Exception as e:
+            logger.error(f"Error encoding file {full_path}: {e}")
+            return None
+
+    def _get_project_mapping(self, project):
+        """
+        Parses Label Studio XML config to map variable names to database keys.
+        This allows the API to handle multiple input types (e.g., Image + Text) generically.
+        
+        Returns:
+            dict: Mapping of { 'ls_variable_name': 'ls_variable_name' }
+            Example: {'image': 'image', 'caption': 'caption'}
+        """
+        mapping = {}
         try:
             parsed_config = project.get_parsed_config() or {}
+            # Iterate through all control tags in the config
             for key, info in parsed_config.items():
                 inputs = info.get('input', [])
-                if inputs:
-                    for inp in inputs:
-                        val = inp.get('value', '')
-                        if val.startswith('$'):
-                            target_data_key = val[1:]
-                            break
-                if target_data_key:
-                    break
-        except Exception:
-            pass
+                for inp in inputs:
+                    val = inp.get('value', '')
+                    # Look for variables starting with '$' (e.g., value="$image")
+                    if val.startswith('$'):
+                        ls_variable = val[1:] # Remove '$' prefix
+                        mapping[ls_variable] = ls_variable
+        except Exception as e:
+            logger.warning(f"Mapping parse error: {e}")
+        return mapping
 
+
+    def _process_task_data(self, task, mapping):
+        """
+        Converts a Task model instance into a dictionary payload.
+        Handles dynamic key mapping and automatically Base64 encodes file paths.
+        """
+        task_data = getattr(task, "data", {}) or {}
+        dynamic_data = {}
         
-        def _process_task_data(task):
-            data_obj = getattr(task, "data", {}) or {}
-            entry = {"id": task.id}
-            
-            # Lấy content gốc
-            content = None
-            if target_data_key and target_data_key in data_obj:
-                content = data_obj[target_data_key]
-            elif data_obj:
-                content = next(iter(data_obj.values()), None)
+        # Determine keys to process: use mapping if available, otherwise use all keys
+        keys_to_process = mapping.keys() if mapping else task_data.keys()
 
-            # Khởi tạo giá trị mặc định (cho trường hợp là Text)
-            entry["data"] = content if content else ""
-            entry["image_base64"] = None 
-            entry["data_type"] = "text" # Gắn nhãn loại dữ liệu để Tool dễ xử lý
-
-            # [LOGIC PHÂN LOẠI & XỬ LÝ ẢNH]
-            # Kiểm tra: Content có phải string và có bắt đầu bằng đường dẫn media của Label Studio không?
-            # Mặc định MEDIA_URL là '/data/'
-            media_url = getattr(settings, 'MEDIA_URL', '/data/')
+        for ls_key in keys_to_process:
+            # Map Label Studio key to Database key (defaulting to 1-to-1 mapping)
+            db_key = mapping.get(ls_key, ls_key)
+            value = task_data.get(db_key)
             
-            if isinstance(content, str) and content.startswith(media_url):
-                # ==> ĐÂY LÀ FILE (ẢNH/AUDIO)
-                entry["data_type"] = "file"
+            processed_value = value
+            
+            # Logic: Automatically detect if the value is a file path and encode it
+            if isinstance(value, str):
+                lower_val = value.lower()
+                media_url = getattr(settings, 'MEDIA_URL', '/media/')
                 
-                # 1. Chuyển đổi path URL sang path hệ thống
-                # Vd: /data/upload/1/abc.jpg -> /var/www/label-studio/data/upload/1/abc.jpg
-                relative_path = content.replace(media_url, '', 1)
-                media_root = getattr(settings, 'MEDIA_ROOT', '')
-                real_file_path = os.path.join(media_root, relative_path)
-
-                # 2. Gán tên file vào 'data' (Theo yêu cầu của bạn)
-                entry["data"] = os.path.basename(real_file_path)
-
-                # 3. Đọc file và Encode Base64
-                if os.path.exists(real_file_path):
-                    try:
-                        with open(real_file_path, "rb") as f:
-                            encoded = base64.b64encode(f.read()).decode('utf-8')
-                            entry["image_base64"] = encoded
-                    except Exception as e:
-                        logger.error(f"Failed to encode file {real_file_path}: {e}")
-                else:
-                    # File không tồn tại trên ổ cứng (có thể là link S3 hoặc lỗi)
-                    # Giữ nguyên content gốc trong data để debug
-                    entry["data"] = content 
+                # List of supported extensions for encoding
+                supported_extensions = ['.jpg', '.jpeg', '.png', '.mp3', '.wav', '.mp4', '.pdf']
+                
+                is_likely_file = (
+                    lower_val.startswith(media_url) or 
+                    any(lower_val.endswith(ext) for ext in supported_extensions)
+                )
+                
+                if is_likely_file:
+                    encoded = self._encode_file(value)
+                    if encoded: 
+                        processed_value = encoded
             
-            return entry
+            dynamic_data[ls_key] = processed_value
 
+        # Extract existing annotations (if any) to provide context/examples
+        current_annotations = []
+        if task.is_labeled:
+            last_ann = task.annotations.last()
+            if last_ann and last_ann.result:
+                current_annotations.append({
+                    "id": last_ann.id,
+                    "result": last_ann.result
+                })
 
+        # Construct the final task entry
+        return {
+            "id": task.id,
+            "data": dynamic_data,
+            "annotations": current_annotations, # Using 'annotations' key standard
+            "meta_info": {
+                "created_at": str(task.created_at) if hasattr(task, 'created_at') else None,
+            }
+        }
+
+    
+    def get_object(self):
+        return super().get_object()
+
+    def _get_labeling_config_details(self, project):
+        """
+        Parses XML config to extract valid labels/choices.
+        """
+        try:
+            label_project_xml = project.label_config
+            root = ET.fromstring(label_project_xml)
+            # Find the control tag that has a 'toName' attribute
+            control_tag = root.find(".//*[@toName]")
+            if control_tag is not None:
+                from_name = control_tag.attrib.get("name")
+                to_name = control_tag.attrib.get("toName")
+                tag_type = control_tag.tag.lower()
+                valid_choices = []
+                child_tag_name = "Choice" if tag_type == "choices" else "Label"
+                
+                # Extract all values
+                for choice_elem in control_tag.findall(f".//{child_tag_name}"):
+                    val = choice_elem.attrib.get("value")
+                    if val: valid_choices.append(val)
+                    
+                if from_name and to_name:
+                    return from_name, to_name, tag_type, valid_choices
+            return None, None, None, None
+        except: return None, None, None, None
+
+    def update_tasks_with_labels(self, api_response, project, user, tool_name=None):
+        """
+        Processes the standardized JSON response from the external tool and updates the database.
+        
+        This function acts as a "Universal Adapter" (Dumb Pipe):
+        It receives a pre-formatted Label Studio 'result' JSON from the tool and saves it directly.
+        It is agnostic to the data type (Image, Text, Audio, etc.).
+
+        Args:
+            api_response (list|dict): The JSON payload returned by the 3rd party tool.
+            project (Project): The Label Studio project instance.
+            user (User): The user (system/bot) assigned to these annotations.
+            tool_name (str, optional): Name of the tool for tracking purposes.
+
+        Returns:
+            dict: Summary of the operation {'updated': int, 'failed': list, 'updated_tasks_id': list}
+        """
+        updated_count = 0
+        updated_task_ids = []
+        failed_ids = []
+        
+        # 1. Normalize Input (Handle both List and Dict formats)
+        # Tools might return a direct list or a dict wrapping the results
+        items_to_process = api_response
+        if isinstance(api_response, dict):
+            # Attempt to find the list under common keys like 'results' or 'dataset'
+            items_to_process = api_response.get('results') or api_response.get('dataset') or []
+
+        for item in items_to_process:
+            task_id = item.get('id')
+            
+            # Extract core components
+            result_json = item.get('result')  # Mandatory: The Label Studio compatible result
+            metadata = item.get('metadata', {}) # Optional: Confidence scores, model versions, etc.
+            
+            if not task_id:
+                continue
+                
+            # validation: Skip if the tool returned an error or empty result
+            if not result_json:
+                failed_ids.append({"id": task_id, "reason": "Empty result"})
+                continue
+
+            try:
+                task = Task.objects.get(id=task_id, project=project)
+                
+                # ---------------------------------------------------------
+                # STEP 2: Update Task Metadata (Non-visual data)
+                # This helps in filtering tasks later (e.g., "Show me tasks with score < 0.5")
+                # ---------------------------------------------------------
+                current_data = task.data or {}
+                data_changed = False
+                
+                # A. Merge new data if the tool modified the original input (e.g., corrected OCR text)
+                if 'data' in item and isinstance(item['data'], dict):
+                    current_data.update(item['data'])
+                    data_changed = True
+                
+                # B. Store AI Model Metadata
+                # Use a reserved key '__model_meta' to avoid conflicts with actual dataset columns
+                if metadata:
+                    current_data['__model_meta'] = metadata
+                    data_changed = True
+                
+                # C. Track which tool performed the labeling
+                if tool_name:
+                    current_data['labeled_by'] = tool_name
+                    data_changed = True
+                    
+                # Only hit the database if data actually changed
+                if data_changed:
+                    task.data = current_data
+                    task.save(update_fields=['data'])
+
+                # ---------------------------------------------------------
+                # STEP 3: Create/Update Annotation (THE CORE LOGIC)
+                # We inject the raw 'result_json' directly into the DB.
+                # The Frontend handles rendering based on 'from_name'/'to_name' mapping.
+                # ---------------------------------------------------------
+                Annotation.objects.update_or_create(
+                    task=task,
+                    completed_by=user, # Usually the System Bot user
+                    project=project,
+                    defaults={
+                        'result': result_json,  # <--- Magic happens here: Universal JSON storage
+                        'was_cancelled': False,
+                        'ground_truth': False,
+                        # Automatically track how long the model took (if provided)
+                        'lead_time': metadata.get('processing_time', 0)
+                    }   
+                )
+                
+                updated_count += 1
+                updated_task_ids.append(task_id)
+
+            except Task.DoesNotExist:
+                failed_ids.append({"id": task_id, "reason": "Task not found in DB"})
+            except Exception as e:
+                logger.error(f"Error saving task {task_id}: {e}")
+                failed_ids.append({"id": task_id, "reason": str(e)})
+
+        return {
+            'updated': updated_count, 
+            'failed': failed_ids, 
+            "updated_tasks_id": updated_task_ids
+        }
+    
+    def _build_payload(self, tool, project, limit=100, selected_ids=None):
+        """
+        Constructs the Universal Payload containing labels, dataset, and metadata.
+        """
+        # Retrieve label configuration (choices/classes)
+        _, _, _, valid_choices = self._get_labeling_config_details(project)
+        label_list = valid_choices if valid_choices else []
+
+        # If tool has static input data (e.g., prompt templates), return it directly
+        if tool.input_data and isinstance(tool.input_data, list):
+             return tool.input_data, None
+
+        # A. Get Field Mapping
+        mapping = self._get_project_mapping(project)
+
+        # B. Query Tasks
         qs = Task.objects.filter(project=project).order_by("id")
         if selected_ids and isinstance(selected_ids, list) and len(selected_ids) > 0:
             qs = qs.filter(id__in=selected_ids)
         elif limit:
             qs = qs[:limit]
 
-        final_list = []
+        # C. Process Tasks Loop
+        task_list = []
         for t in qs:
-            entry = _process_task_data(t)
+            entry = self._process_task_data(t, mapping)
             
-            # Logic lấy Label (Giữ nguyên)
+            # Fallback logic for simple label representation (Backward Compatibility)
             label_value = None
-            if t.is_labeled:
-                annotation = t.annotations.last()
-                if annotation and annotation.result:
-                    for res in annotation.result:
-                        if res.get('type') == 'choices':
-                            try:
-                                choices = res.get('value', {}).get('choices', [])
-                                if choices: label_value = choices[0]; break 
-                            except: continue
+            if entry['annotations']:
+                 for res in entry['annotations'][0]['result']:
+                     if res.get('type') == 'choices':
+                         try:
+                             choices = res.get('value', {}).get('choices', [])
+                             if choices: label_value = choices[0]; break
+                         except: continue
+            entry["label"] = label_value
             
-            entry["label"] = label_value 
-            final_list.append(entry)
+            task_list.append(entry)
 
-        return final_list
-
-    
-    def get_object(self):
-        queryset = self.filter_queryset(self.get_queryset())
-        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        assert lookup_url_kwarg in self.kwargs, (
-            'Expected view %s to be called with a URL keyword argument named "%s".'
-            % (self.__class__.__name__, lookup_url_kwarg)
-        )
-        obj = generics.get_object_or_404(queryset, **{self.lookup_field: self.kwargs[lookup_url_kwarg]})
-        return obj
-    
-    def _get_labeling_config_details(self, project):
-        try:
-            label_project_xml = project.label_config
-            root = ET.fromstring(label_project_xml)
-            # Tìm thẻ có thuộc tính toName (Choice, Taxonomy...)
-            control_tag = root.find(".//*[@toName]")
-
-            if control_tag is not None:
-                from_name = control_tag.attrib.get("name")
-                to_name = control_tag.attrib.get("toName")
-                tag_type = control_tag.tag.lower()
-
-                # Chỉ hỗ trợ các tag phân loại
-                if tag_type not in ("choices", "labels", "taxonomy", "hypertextlabels", "paragraphlabels"):
-                    logger.warning(f"Unsupported tag type: {tag_type}")
-                    return None, None, None, None
-                
-                valid_choices = []
-                child_tag_name = "Choice" if tag_type == "choices" else "Label"
-                
-                for choice_elem in control_tag.findall(f".//{child_tag_name}"):
-                    value = choice_elem.attrib.get("value")
-                    if value:
-                        valid_choices.append(value)
-
-                if from_name and to_name:
-                    return from_name, to_name, tag_type, valid_choices
-
-            return None, None, None, None
-        except Exception as e:
-            logger.error(f"Error config details: {e}")
-            return None, None, None, None
-
-    def update_tasks_with_labels(self, api_response, project, user, tool_name=None):
-        updated_count = 0
-        updated_task_ids = []
-        from_name, to_name, tag_type, valid_choices = self._get_labeling_config_details(project)
-
-        if not from_name or not to_name:
-            logger.error("Labeling config details not found or unsupported.")
-            return {"updated": updated_count, "skipped": 0}
-            
-        items_to_label = api_response
-        if isinstance(items_to_label, dict) and 'data' in items_to_label:
-            items_to_label = items_to_label['data']
-        
-        failed_ids = []
-
-        for item in items_to_label:
-            task_id = item.get('id')
-            label = item.get("label")
-
-            if not task_id or not label:
-                continue
-                
-            # Lấy các thông tin phụ (ngoài id, label)
-            more_info_data = item.copy()
-            [more_info_data.pop(k, None) for k in ["id", "label", "data"]]
-
-            if valid_choices and label not in valid_choices:
-                failed_ids.append({"id": task_id, "reason": f"Invalid label: {label}"})
-                continue
-
-            try:
-                task = Task.objects.get(id=task_id, project=project)
-                
-                # --- [PHẦN SỬA ĐỔI QUAN TRỌNG] ---
-                # Lấy data hiện tại của Task (nếu chưa có thì là dict rỗng)
-                current_data = task.data if task.data else {}
-                data_changed = False
-
-                # 1. Merge thông tin phụ từ Tool trả về (nếu có)
-                if more_info_data:
-                    current_data.update(more_info_data)
-                    data_changed = True
-
-                # 2. Lưu tên Tool trực tiếp vào JSON data
-                if tool_name:
-                    current_data['labeled_by_tool'] = tool_name
-                    data_changed = True
-
-                # 3. Chỉ lưu xuống DB nếu có sự thay đổi
-                if data_changed:
-                    task.data = current_data
-                    task.save(update_fields=['data'])
-                # -----------------------------------
-
-                result_json = [{
-                    "from_name": from_name,
-                    "to_name": to_name,
-                    "type": tag_type,
-                    "value": { tag_type: [label] }
-                }]
-
-                Annotation.objects.update_or_create(
-                    task=task,
-                    completed_by=user,
-                    project=project,
-                    defaults={
-                        'result': result_json,
-                        'was_cancelled': False,
-                    }
-                )
-                updated_count += 1
-                updated_task_ids.append(task_id)
-            except Exception as e:
-                failed_ids.append(task_id)
-                logger.error(f"Failed label task {task_id}: {e}")
-        
-        return {'updated': updated_count, 'failed': failed_ids, "updated_tasks_id": updated_task_ids}
-    
-    def _build_payload(self, tool, project, limit=100000, selected_ids=None):
-
-        _, _, _, valid_choices = self._get_labeling_config_details(project)
-
-        label_list = valid_choices if valid_choices else []
-
-        input_data = tool.input_data or {}
-        if isinstance(input_data, list):
-            return input_data, None
-        
-        try:
-            task_list = self._collect_tasks_from_project(
-                project,
-                limit=limit,
-                selected_ids=selected_ids
-            )
-        except Exception:
-            task_list = []
-        
+        # Final Payload Structure
         payload = {
             "labels": label_list,
             "data": task_list,
-            "metadata": None
+            "metadata": {"project_id": project.id}
         }
         return payload, None
 
@@ -671,70 +740,42 @@ class ToolRunAPI(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         tool = self.get_object() 
         project = tool.project
-
         selected_ids = request.data.get('selected_tasks_ids', [])
-        logger.info(f"List selected {selected_ids}")
         
         try:
             endpoint_url = tool.endpoint
-            if not endpoint_url or not endpoint_url.startswith(('http://', 'https://')):
-                return Response({'error': 'Invalid tool endpoint URL'}, status=400)
+            if not endpoint_url:
+                return Response({'error': 'Invalid endpoint'}, status=400)
             
-            payload, _ = self._build_payload(tool, project, selected_ids=selected_ids)
+            # Build Payload
+            # NOTE: Using a small limit (e.g., 5) is recommended when using Base64 to avoid large payloads.
+            payload, _ = self._build_payload(tool, project, limit=5, selected_ids=selected_ids) 
 
-            logger.info(f"Payload: {payload}")
+            logger.info(f"Generated Payload with {len(payload['data'])} tasks")
 
+            # Send Request to External Tool
             headers = {'Content-Type': 'application/json'}
-            logger.info(f'Calling tool {tool.id}: {endpoint_url}')
-            
-            # Make initial request and check if it's streaming
             resp = requests.post(
                 endpoint_url, 
                 json=payload, 
-                timeout=5,
+                timeout=60, # Extended timeout for Base64 processing
                 headers=headers,
                 stream=True
             )
             resp.raise_for_status()
 
-            # Check if response is Server-Sent Events
-            content_type = resp.headers.get('Content-Type', '')
-            is_sse = 'text/event-stream' in content_type
-            
-            if is_sse:
-                # Use webhook streaming mode
-                logger.info(f"Detected SSE stream from {endpoint_url}")
-                resp.close()  # Close initial connection
-                
-                # Reconnect with full streaming handling
-                update_summary = self._receive_webhook_stream(
-                    endpoint_url,
-                    tool,
-                    project,
-                    request.user,
-                    payload
-                )
-                
-                return Response({
-                    "status": "success",
-                    "auto_label_summary": update_summary
-                }, status=status.HTTP_200_OK)
-            
-            # Standard non-streaming mode
-            logger.info(f"Using standard mode for {endpoint_url}")
-            
+            # Handle Response
             try:
                 external_output = resp.json()
-            except ValueError:
+            except:
                 external_output = resp.text
 
-            tool_name_str = getattr(tool, 'title', getattr(tool, 'name', f'Tool {tool.id}'))
-
+            # Update DB with results
             update_summary = self.update_tasks_with_labels(
                 external_output,
                 project,
                 request.user,
-                tool_name=tool_name_str
+                tool_name=getattr(tool, 'title', f'Tool {tool.id}')
             )
 
             return Response({
@@ -743,9 +784,6 @@ class ToolRunAPI(generics.GenericAPIView):
                 "auto_label_summary": update_summary
             }, status=status.HTTP_200_OK)
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f'Tool request failed: {e}')
-            return Response({'error': 'Failed to call tool', 'details': str(e)}, status=502)
         except Exception as e:
-            logger.error(f'Tool execution error: {e}', exc_info=True)
-            return Response({'error': 'Internal server error', 'details': str(e)}, status=500)
+            logger.error(f'Error: {e}', exc_info=True)
+            return Response({'error': str(e)}, status=500)
