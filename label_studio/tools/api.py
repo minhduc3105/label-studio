@@ -405,6 +405,9 @@ class ToolRunAPI(generics.GenericAPIView):
                     "result": last_ann.result
                 })
 
+        print("Processed Task Data:", dynamic_data)
+        print("Current Annotations:", current_annotations)
+
         # Construct the final task entry
         return {
             "id": task.id,
