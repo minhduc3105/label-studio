@@ -61,8 +61,8 @@ export const ToolSettingsForm = ({
       setOutputFields(jsonToFields(tool.output_data));
       // If editing existing tool, mark as validated
       setIsValidated(true);
-      setValidationStatus('success');
-      setValidationMessage('Existing tool endpoint');
+      setValidationStatus("success");
+      setValidationMessage("Existing tool endpoint");
     } else {
       // Chế độ "Create" - Auto-fill with default values
       setName("");
@@ -73,7 +73,11 @@ export const ToolSettingsForm = ({
         { id: Date.now() + 2, key: "num_epoch", value: "6" },
         { id: Date.now() + 3, key: "num_lfs_each", value: "4" },
         { id: Date.now() + 4, key: "hf_model", value: "bert-base-cased" },
-        { id: Date.now() + 5, key: "api_key", value: "AIzaSyDrfS8dr2zW67_h9eHqIbcelyHNrnWBWWQ" },
+        {
+          id: Date.now() + 5,
+          key: "api_key",
+          value: "AIzaSyDrfS8dr2zW67_h9eHqIbcelyHNrnWBWWQ",
+        },
       ];
       setInputFields(defaultInputFields);
       // Default output configuration (empty)
@@ -213,29 +217,48 @@ export const ToolSettingsForm = ({
     setValidationMessage("");
 
     try {
-      // Create test payload matching the expected format
-      // The tool endpoint expects: { labels: [], data: [], metadata: null }
+      // 1. TẠO DUMMY PAYLOAD (Mô phỏng Universal Payload)
+      // Chúng ta giả lập một Project đơn giản (Text Classification) để test kết nối.
+      // Tool bên thứ 3 nếu chuẩn generic sẽ đọc "label_config_xml" để hiểu.
       const testPayload = {
-        labels: ["test_label_1", "test_label_2"], // Sample labels for validation
-        data: [
+        project_context: {
+          project_id: "validation_ping_001",
+          title: "API Connection Test",
+          // Gửi kèm một Config XML giả lập đơn giản: Input là Text, Output là Nhãn
+          label_config_xml: `<View>
+          <Text name="text" value="$text_content"/>
+          <Choices name="label" toName="text">
+            <Choice value="Test_Passed"/>
+            <Choice value="Test_Failed"/>
+          </Choices>
+        </View>`,
+          // Metadata phụ từ các input fields (nếu có)
+          custom_meta: fieldsToJson(inputFields),
+        },
+        dataset: [
           {
-            id: 0,
-            data: "This is a validation test message",
-            label: null,
-            data_type: "text",
-            image_base64: null
-          }
+            id: 99999,
+            data: {
+              text_content:
+                "This is a validation request to check API compatibility.",
+            },
+            annotations: [],
+            meta_info: {
+              source: "frontend_validator",
+              timestamp: new Date().toISOString(),
+            },
+          },
         ],
-        metadata: fieldsToJson(inputFields) // Send input configuration as metadata
       };
 
-      // Test the endpoint with the payload
+      // 2. GỬI REQUEST
       const resp = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(testPayload),
       });
 
+      // Xử lý lỗi HTTP (4xx, 5xx)
       if (!resp.ok) {
         const text = await resp.text();
         let errorDetails = text;
@@ -243,43 +266,86 @@ export const ToolSettingsForm = ({
           errorDetails = JSON.parse(text);
         } catch {}
 
-        throw new Error(`API returned status ${resp.status}: ${typeof errorDetails === 'object' ? JSON.stringify(errorDetails) : errorDetails}`);
+        const errorMsg =
+          typeof errorDetails === "object"
+            ? JSON.stringify(errorDetails)
+            : errorDetails.substring(0, 100) +
+              (errorDetails.length > 100 ? "..." : "");
+
+        throw new Error(`API returned status ${resp.status}: ${errorMsg}`);
       }
 
+      // 3. VALIDATE RESPONSE STRUCTURE
       const result = await resp.json();
 
-      // Validate response structure
-      if (!result || typeof result !== 'object') {
-        throw new Error("API response is not in valid JSON format");
+      if (!result || typeof result !== "object") {
+        throw new Error("API response is not valid JSON.");
       }
 
-      // Check if response has the expected structure
-      // Expected: Array of objects with 'id' and 'label' fields
-      // OR: Object with 'data' field containing such array
-      let dataArray = Array.isArray(result) ? result : result.data;
-      
+      // Chuẩn hóa về dạng Array (Tool có thể trả về Array hoặc Object {results: [...]})
+      let dataArray = Array.isArray(result)
+        ? result
+        : result.results || result.dataset || result.data;
+
       if (!dataArray || !Array.isArray(dataArray)) {
-        throw new Error("API response must be an array or contain a 'data' array field");
+        throw new Error(
+          "API response must be an Array or contain a 'results'/'dataset' array."
+        );
       }
 
-      // Validate that at least one item in response has expected structure
-      if (dataArray.length > 0) {
+      if (dataArray.length === 0) {
+        // Warning nhẹ: Tool trả về mảng rỗng (có thể do không predict được gì)
+        // Nhưng về mặt kết nối thì vẫn là Success.
+        console.warn("API connected but returned empty results.");
+      } else {
+        // Validate Item đầu tiên
         const firstItem = dataArray[0];
-        if (!firstItem.hasOwnProperty('id')) {
-          throw new Error("Response items must contain 'id' field");
+
+        // Check 1: Phải có ID để map ngược lại
+        if (!firstItem.hasOwnProperty("id")) {
+          throw new Error(
+            "Response items must contain 'id' field matching the request task id."
+          );
         }
-        if (!firstItem.hasOwnProperty('label')) {
-          throw new Error("Response items must contain 'label' field");
+
+        // Check 2: Phải có 'result' (Chuẩn Label Studio)
+        // Tool CŨ có thể trả về 'label', Tool MỚI bắt buộc phải là 'result'
+        if (!firstItem.hasOwnProperty("result")) {
+          throw new Error(
+            "Response items must contain 'result' field (Label Studio Standard Format)."
+          );
+        }
+
+        const predictionResult = firstItem.result;
+
+        // Check 3: Validate cấu trúc bên trong 'result'
+        if (!Array.isArray(predictionResult)) {
+          throw new Error(
+            "Field 'result' must be an Array of annotation objects."
+          );
+        }
+
+        // Nếu có kết quả, kiểm tra các trường bắt buộc
+        if (predictionResult.length > 0) {
+          const ann = predictionResult[0];
+          if (!ann.from_name || !ann.to_name || !ann.type) {
+            throw new Error(
+              "Inside 'result', items must have 'from_name', 'to_name', and 'type'."
+            );
+          }
         }
       }
 
-      // Success - API is valid and returns correct format
-      setValidationStatus('success');
-      setValidationMessage('✓ API endpoint validated successfully! Response format is correct.');
+      // 4. THÀNH CÔNG
+      setValidationStatus("success");
+      setValidationMessage(
+        "✓ API endpoint validated successfully! Payload & Response formats are correct."
+      );
       setIsValidated(true);
     } catch (err) {
-      setValidationStatus('error');
-      const errorMsg = err.message || 'Unknown error occurred';
+      // 5. XỬ LÝ LỖI
+      setValidationStatus("error");
+      const errorMsg = err.message || "Unknown error occurred";
       setValidationMessage(`✗ Validation failed: ${errorMsg}`);
       setIsValidated(false);
       console.error("API Validation Error:", err);
@@ -401,9 +467,9 @@ export const ToolSettingsForm = ({
           onChange={(e) => setEndpoint(e.target.value)}
           style={{ fontSize: "14px" }}
         />
-        <Typography 
-          variant="body" 
-          size="small" 
+        <Typography
+          variant="body"
+          size="small"
           className="text-neutral-content-subtler"
           style={{ marginTop: "0.5rem", fontSize: "13px" }}
         >
@@ -412,13 +478,13 @@ export const ToolSettingsForm = ({
       </Form.Row>
 
       {/* Validation Button and Status */}
-      <Form.Row 
-        columnCount={1} 
-        style={{ 
+      <Form.Row
+        columnCount={1}
+        style={{
           marginBottom: "2rem",
           display: "flex",
           flexDirection: "column",
-          gap: "0.75rem"
+          gap: "0.75rem",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
@@ -432,7 +498,7 @@ export const ToolSettingsForm = ({
           >
             {isValidating ? "Validating..." : "🔍 Validate API"}
           </Button>
-          
+
           {validationStatus && (
             <div
               style={{
@@ -442,11 +508,16 @@ export const ToolSettingsForm = ({
                 fontWeight: "500",
                 display: "flex",
                 alignItems: "center",
-                backgroundColor: validationStatus === 'success' 
-                  ? 'rgba(16, 185, 129, 0.1)' 
-                  : 'rgba(239, 68, 68, 0.1)',
-                color: validationStatus === 'success' ? '#059669' : '#dc2626',
-                border: `1px solid ${validationStatus === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                backgroundColor:
+                  validationStatus === "success"
+                    ? "rgba(16, 185, 129, 0.1)"
+                    : "rgba(239, 68, 68, 0.1)",
+                color: validationStatus === "success" ? "#059669" : "#dc2626",
+                border: `1px solid ${
+                  validationStatus === "success"
+                    ? "rgba(16, 185, 129, 0.3)"
+                    : "rgba(239, 68, 68, 0.3)"
+                }`,
               }}
             >
               {validationMessage}
@@ -455,11 +526,11 @@ export const ToolSettingsForm = ({
         </div>
 
         {!tool && !isValidated && (
-          <Typography 
-            variant="body" 
-            size="small" 
-            style={{ 
-              fontSize: "12px", 
+          <Typography
+            variant="body"
+            size="small"
+            style={{
+              fontSize: "12px",
               color: "#f59e0b",
               padding: "0.5rem 0.75rem",
               backgroundColor: "rgba(245, 158, 11, 0.1)",
@@ -488,30 +559,36 @@ export const ToolSettingsForm = ({
       </div>
 
       {/* Configuration Info */}
-      <div 
+      <div
         style={{
           padding: "1rem 1.25rem",
           backgroundColor: "rgba(59, 130, 246, 0.05)",
           borderRadius: "8px",
           marginBottom: "2rem",
           border: "1px solid rgba(59, 130, 246, 0.2)",
-          borderLeft: "4px solid #3b82f6"
+          borderLeft: "4px solid #3b82f6",
         }}
       >
-        <Typography 
-          variant="body" 
+        <Typography
+          variant="body"
           size="small"
           className="text-neutral-content-subtler"
           style={{ fontSize: "13px", lineHeight: "1.5", color: "#64748b" }}
         >
-          Integration by iSE Research Lab - Connect every tool to automate labeling workflows with pre-configured settings...
+          Integration by iSE Research Lab - Connect every tool to automate
+          labeling workflows with pre-configured settings...
         </Typography>
       </div>
 
       {/* Submit Button */}
       <Form.Row
         columnCount={1}
-        style={{ marginTop: "2rem", justifyContent: "flex-end", gap: "0.75rem", display: "flex" }}
+        style={{
+          marginTop: "2rem",
+          justifyContent: "flex-end",
+          gap: "0.75rem",
+          display: "flex",
+        }}
       >
         <Button
           variant="primary"
@@ -519,12 +596,12 @@ export const ToolSettingsForm = ({
           onClick={handleSubmit}
           disabled={!tool && !isValidated}
           aria-label={tool ? "Save Changes" : "Add Tool"}
-          style={{ 
+          style={{
             minWidth: "120px",
-            opacity: (!tool && !isValidated) ? 0.5 : 1,
-            cursor: (!tool && !isValidated) ? 'not-allowed' : 'pointer'
+            opacity: !tool && !isValidated ? 0.5 : 1,
+            cursor: !tool && !isValidated ? "not-allowed" : "pointer",
           }}
-          title={(!tool && !isValidated) ? "Please validate API first" : ""}
+          title={!tool && !isValidated ? "Please validate API first" : ""}
         >
           {tool ? "Save Changes" : "Add Tool"}
         </Button>

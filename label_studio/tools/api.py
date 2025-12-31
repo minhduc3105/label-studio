@@ -557,32 +557,34 @@ class ToolRunAPI(generics.GenericAPIView):
     
     def _build_payload(self, tool, project, limit=100, selected_ids=None):
         """
-        Constructs the Universal Payload containing labels, dataset, and metadata.
+        Constructs the Universal Payload containing project context and dataset.
+        Format: { "project_context": {...}, "dataset": [...] }
         """
-        # Retrieve label configuration (choices/classes)
+        # 1. Retrieve label configuration (choices/classes)
         _, _, _, valid_choices = self._get_labeling_config_details(project)
         label_list = valid_choices if valid_choices else []
 
-        # If tool has static input data (e.g., prompt templates), return it directly
+        # If tool has static input data, return it directly (Legacy support)
         if tool.input_data and isinstance(tool.input_data, list):
              return tool.input_data, None
 
-        # A. Get Field Mapping
+        # 2. Get Field Mapping (XML Config -> DB Columns)
         mapping = self._get_project_mapping(project)
 
-        # B. Query Tasks
+        # 3. Query Tasks
         qs = Task.objects.filter(project=project).order_by("id")
         if selected_ids and isinstance(selected_ids, list) and len(selected_ids) > 0:
             qs = qs.filter(id__in=selected_ids)
         elif limit:
             qs = qs[:limit]
 
-        # C. Process Tasks Loop
+        # 4. Process Tasks Loop
         task_list = []
         for t in qs:
+            # Process dynamic data (including Base64 encoding if needed)
             entry = self._process_task_data(t, mapping)
             
-            # Fallback logic for simple label representation (Backward Compatibility)
+            # Legacy: Add simple 'label' field for backward compatibility
             label_value = None
             if entry['annotations']:
                  for res in entry['annotations'][0]['result']:
@@ -595,11 +597,15 @@ class ToolRunAPI(generics.GenericAPIView):
             
             task_list.append(entry)
 
-        # Final Payload Structure
+        # 5. Final Universal Payload Structure
         payload = {
-            "labels": label_list,
-            "data": task_list,
-            "metadata": {"project_id": project.id}
+            "project_context": {
+                "project_id": project.id,
+                "title": project.title,
+                "label_config_xml": project.label_config,
+                "labels": label_list
+            },
+            "dataset": task_list 
         }
         return payload, None
 
@@ -750,30 +756,49 @@ class ToolRunAPI(generics.GenericAPIView):
             if not endpoint_url:
                 return Response({'error': 'Invalid endpoint'}, status=400)
             
-            # Build Payload
-            # NOTE: Using a small limit (e.g., 5) is recommended when using Base64 to avoid large payloads.
+            # 1. Build Payload
             payload, _ = self._build_payload(tool, project, limit=5, selected_ids=selected_ids) 
 
-            logger.info(f"Generated Payload with {len(payload['data'])} tasks")
+            logger.info(f"--- SENDING PAYLOAD TO {endpoint_url} ---")
+            logger.info(json.dumps(payload, indent=2, ensure_ascii=False))
+            logger.info("-----------------------------------------")
 
-            # Send Request to External Tool
+            # 2. Send Request
             headers = {'Content-Type': 'application/json'}
             resp = requests.post(
                 endpoint_url, 
                 json=payload, 
-                timeout=60, # Extended timeout for Base64 processing
+                timeout=60, 
                 headers=headers,
                 stream=True
             )
+
+            print("Response:", resp.json())
+
+            # 3. Handle 400 Bad Request explicitly
+            if resp.status_code == 400:
+                try:
+                    tool_error = resp.json()
+                except:
+                    tool_error = resp.text
+                
+                logger.error(f"❌ Tool rejected payload. Reason: {tool_error}")
+
+                return Response({
+                    "error": "Tool rejected request (400 Bad Request)",
+                    "tool_response": tool_error, 
+                    "sent_payload": payload      
+                }, status=400)
+
             resp.raise_for_status()
 
-            # Handle Response
+            # 4. Handle Success Response
             try:
                 external_output = resp.json()
             except:
                 external_output = resp.text
 
-            # Update DB with results
+            # 5. Save to DB
             update_summary = self.update_tasks_with_labels(
                 external_output,
                 project,
