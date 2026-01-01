@@ -803,7 +803,7 @@ class ToolRunAPI(generics.GenericAPIView):
                 external_output,
                 project,
                 request.user,
-                tool_name=getattr(tool, 'title', f'Tool {tool.id}')
+                tool_name=tool.name
             )
 
             return Response({
