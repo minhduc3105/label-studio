@@ -8,6 +8,7 @@ import base64
 import os
 import random
 import colorsys
+from dotenv import load_dotenv
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
@@ -22,8 +23,8 @@ from django.http import StreamingHttpResponse
 from django.conf import settings
 import json
 import tempfile
-import os
 import time
+from minio import Minio
 from tasks.models import Task, Annotation
  
 
@@ -34,6 +35,7 @@ from .models import Tool
 from .serializers import ToolSerializer
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 
 VALID_CONTROL_TAGS = {
@@ -289,47 +291,6 @@ class ToolRunAPI(generics.GenericAPIView):
     serializer_class = ToolSerializer
     queryset = Tool.objects.all()
 
-    def _encode_file(self, file_path):
-        """
-        Reads a local file and encodes it into a Base64 Data URI string.
-        
-        Args:
-            file_path (str): Relative path to the file (e.g., "uploads/images/abc.jpg")
-            
-        Returns:
-            str: Data URI string (e.g., "data:image/jpeg;base64,iVBORw...") or None if failed.
-        """
-        if not file_path or not isinstance(file_path, str):
-            return None
-        
-        # Construct absolute system path based on Django settings
-        media_root = getattr(settings, 'MEDIA_ROOT', '')
-        clean_path = str(file_path)
-        media_url = getattr(settings, 'MEDIA_URL', '/media/')
-        
-        # Remove media URL prefix if present to get the raw relative path
-        if clean_path.startswith(media_url):
-            clean_path = clean_path.replace(media_url, '', 1)
-
-        full_path = os.path.join(media_root, clean_path)
-
-        # Check if file exists on the server filesystem
-        if not os.path.exists(full_path) or not os.path.isfile(full_path):
-            return file_path # Return original string if file not found
-
-        # Detect MIME type (e.g., image/png, audio/mp3)
-        mime_type, _ = mimetypes.guess_type(full_path)
-        if not mime_type:
-            mime_type = 'application/octet-stream'
-
-        try:
-            # Read binary file and encode
-            with open(full_path, "rb") as f:
-                encoded_string = base64.b64encode(f.read()).decode('utf-8')
-                return f"data:{mime_type};base64,{encoded_string}"
-        except Exception as e:
-            logger.error(f"Error encoding file {full_path}: {e}")
-            return None
 
     def _get_project_mapping(self, project):
         """
@@ -355,9 +316,73 @@ class ToolRunAPI(generics.GenericAPIView):
         except Exception as e:
             logger.warning(f"Mapping parse error: {e}")
         return mapping
+    
+    def _get_url_path_from_value(self, project, value):
+        try:
+            # --- STEP 1: NORMALIZE FILE PATH (CRITICAL) ---
+            # Label Studio typically stores paths like: /data/upload/1/abc.jpg
+            # We need to convert it to a relative path: upload/1/abc.jpg
+            relative_path = value
+            
+            # If the path starts with /data/ (typical for Docker/Label Studio), remove it
+            if relative_path.startswith('/data/'):
+                relative_path = relative_path.replace('/data/', '', 1)
+            
+            # Remove leading slashes to ensure os.path.join works correctly
+            # (If not removed, os.path.join treats it as a root path and ignores MEDIA_ROOT)
+            relative_path = relative_path.lstrip('/\\')
+            
+            # Join with the current environment's media root directory
+            # On Windows: settings.MEDIA_ROOT = C:\Users\...\label-studio\
+            # On Docker: settings.MEDIA_ROOT = /label-studio/data/
+            file_path_on_disk = os.path.join(settings.MEDIA_ROOT, relative_path)
+            
+            # Normalize slashes (/ or \) depending on the running OS
+            file_path_on_disk = os.path.normpath(file_path_on_disk)
+            
+            # Debug: Print to check where the file is being looked for (Remove this line in Prod)
+            print(f"Checking file at: {file_path_on_disk}")
 
+            if not os.path.exists(file_path_on_disk):
+                print(f"[WARNING] File not found on disk: {file_path_on_disk}")
+                return None
 
-    def _process_task_data(self, task, mapping):
+            # --- STEP 2: CONNECT TO MINIO VIA ENVIRONMENT VARIABLES ---
+           # Use os.getenv but update DEFAULT values to match your Docker container
+            minio_endpoint = os.getenv("MINIO_URL", "localhost:9000")
+            
+            minio_endpoint = minio_endpoint.replace("http://", "").replace("https://", "")
+
+            minio_client = Minio(
+                minio_endpoint,
+                access_key=os.getenv("MINIO_ACCESS_KEY", "minio_admin_do_not_use_in_production"),
+                secret_key=os.getenv("MINIO_SECRET_KEY", "minio_admin_do_not_use_in_production"),
+                secure=False 
+            )
+
+            bucket_name = f"project-{project.id}-data"
+            if not minio_client.bucket_exists(bucket_name):
+                minio_client.make_bucket(bucket_name)
+
+            object_name = os.path.basename(value)
+            
+            # Upload
+            minio_client.fput_object(
+                bucket_name,
+                object_name,
+                file_path_on_disk,
+                content_type=mimetypes.guess_type(file_path_on_disk)[0] or 'application/octet-stream'
+            )
+
+            url_path = minio_client.get_presigned_url("GET", bucket_name, object_name)
+
+        except Exception as e:
+            print(f"Minio Error: {e}")
+            url_path = None
+            
+        return url_path
+
+    def _process_task_data(self,project, task, mapping):
         """
         Converts a Task model instance into a dictionary payload.
         Handles dynamic key mapping and automatically Base64 encodes file paths.
@@ -380,7 +405,7 @@ class ToolRunAPI(generics.GenericAPIView):
                 lower_val = value.lower()
                 media_url = getattr(settings, 'MEDIA_URL', '/media/')
                 
-                # List of supported extensions for encoding
+                # List of supported extensions for get URL path
                 supported_extensions = ['.jpg', '.jpeg', '.png', '.mp3', '.wav', '.mp4', '.pdf']
                 
                 is_likely_file = (
@@ -389,9 +414,9 @@ class ToolRunAPI(generics.GenericAPIView):
                 )
                 
                 if is_likely_file:
-                    encoded = self._encode_file(value)
-                    if encoded: 
-                        processed_value = encoded
+                    url_path = self._get_url_path_from_value(project ,value)
+                    if url_path:
+                        processed_value = url_path
             
             dynamic_data[ls_key] = processed_value
 
@@ -447,6 +472,7 @@ class ToolRunAPI(generics.GenericAPIView):
                     return from_name, to_name, tag_type, valid_choices
             return None, None, None, None
         except: return None, None, None, None
+    
 
     def update_tasks_with_labels(self, api_response, project, user, tool_name=None):
         """
@@ -532,10 +558,9 @@ class ToolRunAPI(generics.GenericAPIView):
                     completed_by=user, # Usually the System Bot user
                     project=project,
                     defaults={
-                        'result': result_json,  # <--- Magic happens here: Universal JSON storage
+                        'result': result_json,  
                         'was_cancelled': False,
                         'ground_truth': False,
-                        # Automatically track how long the model took (if provided)
                         'lead_time': metadata.get('processing_time', 0)
                     }   
                 )
@@ -582,7 +607,7 @@ class ToolRunAPI(generics.GenericAPIView):
         task_list = []
         for t in qs:
             # Process dynamic data (including Base64 encoding if needed)
-            entry = self._process_task_data(t, mapping)
+            entry = self._process_task_data(project,t, mapping)
             
             # Legacy: Add simple 'label' field for backward compatibility
             label_value = None
