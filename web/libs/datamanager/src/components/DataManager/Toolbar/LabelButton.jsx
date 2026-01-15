@@ -513,8 +513,9 @@ export const LabelButton = injector(
     // 1. Helper: Auth Headers
     const buildAuthHeaders = useCallback(() => {
       const headers = { "Content-Type": "application/json" };
-      const token = localStorage.getItem("access") || localStorage.getItem("token") || null;
-      
+      const token =
+        localStorage.getItem("access") || localStorage.getItem("token") || null;
+
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       } else {
@@ -523,10 +524,6 @@ export const LabelButton = injector(
       }
       return headers;
     }, []);
-
-    // 2. State cho Tools
-    const [tools, setTools] = useState([]);
-    const [isLoadingTools, setIsLoadingTools] = useState(false);
 
     // 3. Fetch Tools API
     const fetchTools = useCallback(async () => {
@@ -610,10 +607,24 @@ export const LabelButton = injector(
         title: "Choose Labeling Method",
         style: { width: 400 },
         body: (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1rem 0" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              padding: "1rem 0",
+            }}
+          >
             <Button
               onClick={startImport}
-              style={{ height: "50px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontSize: "16px" }}
+              style={{
+                height: "50px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+                fontSize: "16px",
+              }}
             >
               📁 1. Import Label File
             </Button>
@@ -621,7 +632,14 @@ export const LabelButton = injector(
             <Button
               variant="primary"
               onClick={startManual}
-              style={{ height: "50px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontSize: "16px" }}
+              style={{
+                height: "50px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+                fontSize: "16px",
+              }}
             >
               ✍️ 2. Manual Labeling
             </Button>
@@ -657,7 +675,8 @@ export const LabelButton = injector(
               style={primaryStyle}
               onClick={onLabelAll}
             >
-              Label {selectedCount ? selectedCount : "All"} Task{(!selectedCount || selectedCount > 1) && "s"}
+              Label {selectedCount ? selectedCount : "All"} Task
+              {(!selectedCount || selectedCount > 1) && "s"}
             </Button>
 
             {/* Dropdown Menu */}
@@ -665,32 +684,41 @@ export const LabelButton = injector(
               align="bottom-right"
               content={
                 <Menu size="compact">
-                  <Menu.Item onClick={onLabelVisible}>Label Tasks As Displayed</Menu.Item>
-                  
+                  <Menu.Item onClick={onLabelVisible}>
+                    Label Tasks As Displayed
+                  </Menu.Item>
+
                   {/* Divider nếu có tools */}
                   {(tools.length > 0 || isLoadingTools) && <Menu.Divider />}
 
                   {/* Loading state */}
                   {isLoadingTools && (
-                    <Menu.Item disabled style={{ color: "#94a3b8", fontStyle: "italic" }}>
+                    <Menu.Item
+                      disabled
+                      style={{ color: "#94a3b8", fontStyle: "italic" }}
+                    >
                       Loading tools...
                     </Menu.Item>
                   )}
 
                   {/* List Tools */}
-                  {!isLoadingTools && tools.map((tool) => (
-                    <Menu.Item
-                      key={tool.id}
-                      onClick={() => onToolClick(tool)}
-                      style={{ fontWeight: "500" }}
-                    >
-                      🛠️ {tool.name}
-                    </Menu.Item>
-                  ))}
+                  {!isLoadingTools &&
+                    tools.map((tool) => (
+                      <Menu.Item
+                        key={tool.id}
+                        onClick={() => onToolClick(tool)}
+                        style={{ fontWeight: "500" }}
+                      >
+                        🛠️ {tool.name}
+                      </Menu.Item>
+                    ))}
 
                   {/* Empty state */}
                   {!isLoadingTools && tools.length === 0 && (
-                    <Menu.Item disabled style={{ color: "#94a3b8", fontStyle: "italic" }}>
+                    <Menu.Item
+                      disabled
+                      style={{ color: "#94a3b8", fontStyle: "italic" }}
+                    >
                       No tools available
                     </Menu.Item>
                   )}

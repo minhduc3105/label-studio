@@ -877,7 +877,7 @@ class ToolRunAPI(generics.GenericAPIView):
                 tool_name=tool.name
             )
 
-            self._cleanup_minio_bucket(project)
+            # self._cleanup_minio_bucket(project)
 
             return Response({
                 "status": "success",
