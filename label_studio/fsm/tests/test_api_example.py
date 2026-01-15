@@ -34,6 +34,8 @@ class APIIntegrationExampleTests(TestCase):
     """
 
     def setUp(self):
+        from copy import deepcopy
+
         self.mock_entity = Mock()
         self.mock_entity.pk = 1
         self.mock_entity._meta.model_name = 'task'
@@ -43,8 +45,13 @@ class APIIntegrationExampleTests(TestCase):
         self.mock_user.id = 42
         self.mock_user.username = 'api_user'
 
-        # Clear registry
+        # Save registry state and clear for this test
+        self._original_transitions = deepcopy(transition_registry._transitions)
         transition_registry._transitions.clear()
+
+    def tearDown(self):
+        # Restore original transition registry to prevent test leakage
+        transition_registry._transitions = self._original_transitions
 
     def test_rest_api_task_assignment_example(self):
         """
@@ -77,8 +84,7 @@ class APIIntegrationExampleTests(TestCase):
                     raise ValueError('Deadline must be in the future')
                 return v
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'ASSIGNED'
 
             def validate_transition(self, context: TransitionContext) -> bool:
@@ -126,7 +132,7 @@ class APIIntegrationExampleTests(TestCase):
                 entity=self.mock_entity,
                 current_user=self.mock_user,
                 current_state='CREATED',
-                target_state=transition.target_state,
+                target_state=transition.get_target_state(),
                 request_data=api_request_data,
             )
 
@@ -142,7 +148,7 @@ class APIIntegrationExampleTests(TestCase):
                 'message': 'Task assigned successfully',
                 'data': {
                     'task_id': self.mock_entity.pk,
-                    'new_state': transition.target_state,
+                    'new_state': transition.get_target_state(),
                     'assignment_details': result_data,
                 },
                 'timestamp': datetime.now().isoformat(),
@@ -209,9 +215,8 @@ class APIIntegrationExampleTests(TestCase):
                 default_factory=dict, description='Additional metadata about the annotation process'
             )
 
-            @property
-            def target_state(self) -> str:
-                return 'SUBMITTED'
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
+                return 'CREATED'
 
             def transition(self, context: TransitionContext) -> Dict[str, Any]:
                 return {
@@ -304,8 +309,7 @@ class APIIntegrationExampleTests(TestCase):
             batch_id: str = Field(..., description='Unique identifier for this batch')
             force_update: bool = Field(False, description='Force update even if invalid states')
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return self.new_status
 
             def validate_transition(self, context: TransitionContext) -> bool:
@@ -363,7 +367,7 @@ class APIIntegrationExampleTests(TestCase):
                     entity=mock_task,
                     current_user=self.mock_user,
                     current_state=current_state,
-                    target_state=transition.target_state,
+                    target_state=transition.get_target_state(),
                 )
 
                 # Validate and execute
@@ -421,8 +425,7 @@ class APIIntegrationExampleTests(TestCase):
                 default_factory=list, description='Webhook response tracking'
             )
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'COMPLETED'
 
             def validate_transition(self, context: TransitionContext) -> bool:
@@ -482,7 +485,7 @@ class APIIntegrationExampleTests(TestCase):
             entity=self.mock_entity,
             current_user=self.mock_user,
             current_state='IN_PROGRESS',
-            target_state=transition.target_state,
+            target_state=transition.get_target_state(),
         )
 
         # Validate and execute
@@ -528,8 +531,7 @@ class APIIntegrationExampleTests(TestCase):
             authorization_token: str = Field(..., description='Authorization token for critical updates')
             backup_required: bool = Field(True, description='Whether backup is required before update')
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'CRITICALLY_UPDATED'
 
             def validate_transition(self, context: TransitionContext) -> bool:
@@ -603,7 +605,7 @@ class APIIntegrationExampleTests(TestCase):
                     entity=self.mock_entity,
                     current_user=self.mock_user,
                     current_state=current_state,
-                    target_state=transition.target_state,
+                    target_state=transition.get_target_state(),
                 )
 
                 # Validate business logic
@@ -617,7 +619,7 @@ class APIIntegrationExampleTests(TestCase):
                     'success': True,
                     'data': {
                         'task_id': self.mock_entity.pk,
-                        'new_state': transition.target_state,
+                        'new_state': transition.get_target_state(),
                         'update_details': result,
                     },
                 }
@@ -709,8 +711,7 @@ class APIIntegrationExampleTests(TestCase):
             status: str = Field(..., description='New task status')
             notes: str = Field('', description='Update notes')
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return self.status
 
             def transition(self, context: TransitionContext) -> Dict[str, Any]:
@@ -751,7 +752,7 @@ class APIIntegrationExampleTests(TestCase):
 
         v1_transition = UpdateTaskV1Transition(**v1_request)
         context = TransitionContext(
-            entity=self.mock_entity, current_state='CREATED', target_state=v1_transition.target_state
+            entity=self.mock_entity, current_state='CREATED', target_state=v1_transition.get_target_state()
         )
 
         v1_result = v1_transition.transition(context)

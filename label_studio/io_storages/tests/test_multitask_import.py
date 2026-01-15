@@ -72,6 +72,9 @@ def _test_storage_import(project, storage_class, task_data, **storage_kwargs):
     # Setup storage with required credentials
     storage = storage_class(project=project, **storage_kwargs)
 
+    # Save the storage to the database before syncing
+    storage.save()
+
     # Validate connection before sync
     try:
         storage.validate_connection()
@@ -79,8 +82,11 @@ def _test_storage_import(project, storage_class, task_data, **storage_kwargs):
         pytest.fail(f'Storage connection validation failed: {str(e)}')
 
     # Sync storage
-    # Don't have to wait for sync to complete because it's blocking without rq
-    storage.sync()
+    # Mock redis_connected to force synchronous execution in tests
+    import mock
+
+    with mock.patch('io_storages.base_models.redis_connected', return_value=False):
+        storage.sync()
 
     # Validate tasks were imported correctly
     tasks_response = client.get(f'/api/tasks?project={project.id}')
@@ -417,3 +423,15 @@ def test_list_jsonl_with_datetimes(storage):
     assert list(output) == expected_output
 
     create_tasks(storage, list(output))
+
+
+def test_allow_skip_false_is_saved(storage):
+    project, s3_storage = storage
+    task_data = {
+        'data': {'text': 'Task with disallowed skip'},
+        'allow_skip': False,
+    }
+    params = StorageObject(key='test.json', task_data=task_data)
+    # Create one task via cloud import pathway
+    task = S3ImportStorage.add_task(project, 1, 1, s3_storage, params, S3ImportStorageLink)
+    assert task.allow_skip is False

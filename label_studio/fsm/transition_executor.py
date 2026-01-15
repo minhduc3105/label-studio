@@ -10,8 +10,8 @@ import logging
 from typing import Any, Dict, Type
 
 from django.db.models import Model
-from fsm.models import BaseState
 from fsm.registry import get_state_model_for_entity, transition_registry
+from fsm.state_models import BaseState
 from fsm.transitions import TransitionContext
 
 logger = logging.getLogger(__name__)
@@ -54,26 +54,49 @@ def execute_transition_with_state_manager(
     if not transition_class:
         raise ValueError(f"Transition '{transition_name}' not found for entity '{entity_name}'")
 
-    # Get the state model for the entity
-    state_model = get_state_model_for_entity(entity)
-    if not state_model:
-        raise ValueError(f"No state model registered for entity '{entity_name}'")
-
-    # Create transition instance with provided data
+    # Create transition instance
     transition = transition_class(**transition_data)
 
-    # Get current state information directly from state model
-    current_state_object = state_model.get_current_state(entity)
-    current_state = current_state_object.state if current_state_object else None
+    # Extract organization_id from context_kwargs if provided, otherwise use entity's org_id
+    organization_id = context_kwargs.pop('organization_id', getattr(entity, 'organization_id', None))
 
-    # Build transition context
+    # Create minimal context with just entity for target_state computation
+    minimal_context = TransitionContext(
+        entity=entity,
+        current_user=user,
+        current_state_object=None,
+        current_state=None,
+        target_state=None,  # Will be computed
+        organization_id=organization_id,
+    )
+
+    # Get target_state (can now use entity from context)
+    target_state = transition.get_target_state(minimal_context)
+    is_side_effect_only = target_state is None
+
+    if is_side_effect_only:
+        # No state model needed for side-effect only transitions
+        state_model = None
+        current_state_object = None
+        current_state = None
+    else:
+        # Get the state model for the entity
+        state_model = get_state_model_for_entity(entity)
+        if not state_model:
+            raise ValueError(f"No state model registered for entity '{entity_name}'")
+
+        # Get current state information directly from state model
+        current_state_object = state_model.get_current_state(entity)
+        current_state = current_state_object.state if current_state_object else None
+
+    # Build full transition context
     context = TransitionContext(
         entity=entity,
         current_user=user,
         current_state_object=current_state_object,
         current_state=current_state,
-        target_state=transition.target_state,
-        organization_id=getattr(entity, 'organization_id', None),
+        target_state=target_state,
+        organization_id=organization_id,
         **context_kwargs,
     )
 
@@ -85,7 +108,7 @@ def execute_transition_with_state_manager(
             'entity_id': entity.pk,
             'transition_name': transition_name,
             'from_state': current_state,
-            'to_state': transition.target_state,
+            'to_state': target_state,
             'user_id': user.id if user else None,
         },
     )
@@ -94,14 +117,40 @@ def execute_transition_with_state_manager(
     # Phase 1: Prepare and validate the transition
     transition_context_data = transition.prepare_and_validate(context)
 
-    # Phase 2: Create the state record via StateManager methods
+    # Merge any additional context_data from TransitionContext
+    # This allows callers to add extra data (e.g., workspace_from_id) to the state record
+    if context.context_data:
+        transition_context_data = {**transition_context_data, **context.context_data}
+
+    # Phase 2: Create the state record via StateManager methods (skip for side-effect only transitions)
+    if is_side_effect_only:
+        # For side-effect only transitions, execute hooks without creating state records
+        logger.info(
+            'Executing side-effect only transition',
+            extra={
+                'event': 'fsm.side_effect_transition',
+                'entity_type': entity_name,
+                'entity_id': entity.pk,
+                'transition_name': transition_name,
+            },
+        )
+        transition.post_transition_hook(context, None)
+        return None
+
+    # Check if this transition forces state record creation (for audit trails)
+    force_state_record = getattr(transition, '_force_state_record', False)
+
+    # Use context.reason if provided (caller override), otherwise use transition's default
+    reason = context.reason if context.reason else transition.get_reason(context)
+
     success = state_manager_class.transition_state(
         entity=entity,
-        new_state=transition.target_state,
+        new_state=target_state,
         transition_name=transition.transition_name,
         user=user,
         context=transition_context_data,
-        reason=transition.get_reason(context),
+        reason=reason,
+        force_state_record=force_state_record,
     )
 
     if not success:

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { IconZoomIn } from "@humansignal/icons";
 import { Button } from "@humansignal/ui";
-import { Dropdown } from "../../../common/Dropdown/Dropdown";
+import { Dropdown } from "@humansignal/ui";
 import { Menu } from "../../../common/Menu/Menu";
 import { ErrorMessage } from "../../../components/ErrorMessage/ErrorMessage";
 import ObjectTag from "../../../components/Tags/Object";
@@ -19,7 +19,7 @@ import {
 import { defaultStyle } from "../../../core/Constants";
 import { useFullscreen } from "../../../hooks/useFullscreen";
 import { useToggle } from "../../../hooks/useToggle";
-import { Block, Elem } from "../../../utils/bem";
+import { cn } from "../../../utils/bem";
 import ResizeObserver from "../../../utils/resize-observer";
 import { clamp, isDefined } from "../../../utils/utilities";
 import "./Video.scss";
@@ -144,7 +144,11 @@ const HtxVideoView = ({ item, store }) => {
   const [position, _setPosition] = useState(1);
 
   const [videoSize, setVideoSize] = useState(null);
-  const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0, ratio: 1 });
+  const [videoDimensions, setVideoDimensions] = useState({
+    width: 0,
+    height: 0,
+    ratio: 1,
+  });
   const [{ zoom, pan }, { setZoomAndPan, setZoom, setPan }] = useZoom(
     videoDimensions,
     item.ref.current
@@ -497,14 +501,14 @@ const HtxVideoView = ({ item, store }) => {
 
   return (
     <ObjectTag item={item}>
-      <Block name="video-segmentation" ref={mainContentRef} mod={{ fullscreen: isFullScreen }}>
+      <div className={cn("video-segmentation").mod({ fullscreen: isFullScreen }).toClassName()} ref={mainContentRef}>
         {item.errors?.map((error, i) => (
           <ErrorMessage key={`err-${i}`} error={error} />
         ))}
 
-        <Block name="video" mod={{ fullscreen: isFullScreen }} ref={videoBlockRef}>
-          <Elem
-            name="main"
+        <div className={cn("video").mod({ fullscreen: isFullScreen }).toClassName()} ref={videoBlockRef}>
+          <div
+            className={cn("video").elem("main").toClassName()}
             ref={videoContainerRef}
             style={{ height: Number(item.height) }}
             onMouseDown={handlePan}
@@ -553,13 +557,12 @@ const HtxVideoView = ({ item, store }) => {
                 />
               </>
             )}
-          </Elem>
-        </Block>
+          </div>
+        </div>
 
         {loaded && (
-          <Elem
-            name="timeline"
-            tag={Timeline}
+          <Timeline
+            className={cn("video-segmentation").elem("timeline").toClassName()}
             playing={isSyncedBuffering && item.isBuffering ? item.wasPlayingBeforeBuffering : playing}
             buffering={isSyncedBuffering ? item.isBuffering : false}
             length={videoLength}
@@ -612,7 +615,7 @@ const HtxVideoView = ({ item, store }) => {
             onAction={handleAction}
           />
         )}
-      </Block>
+      </div>
     </ObjectTag>
   );
 };

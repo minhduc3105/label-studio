@@ -6,6 +6,7 @@ Tests the uuid-utils library integration and UUID7 functionality.
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from unittest.mock import Mock, patch
 
 # Additional imports for transition_utils coverage tests
@@ -18,7 +19,7 @@ from fsm.transition_utils import (
     get_entity_state_flow,
     validate_transition_data,
 )
-from fsm.transitions import BaseTransition, TransitionValidationError
+from fsm.transitions import BaseTransition, TransitionContext, TransitionValidationError
 from fsm.utils import (
     UUID7Generator,
     generate_uuid7,
@@ -199,13 +200,6 @@ class TransitionUtilsTests(TestCase):
     """Tests for transition_utils module edge cases and error handling"""
 
     def setUp(self):
-        # Clear registries to ensure clean state
-        from fsm.registry import state_choices_registry, state_model_registry
-
-        state_choices_registry.clear()
-        state_model_registry.clear()
-        transition_registry.clear()
-
         self.entity = MockEntity()
 
     def test_transition_utils_unexpected_validation_error(self):
@@ -214,8 +208,7 @@ class TransitionUtilsTests(TestCase):
         class BrokenTransition(BaseTransition):
             """Transition that raises unexpected error"""
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'BROKEN'
 
             def transition(self, context):
@@ -244,8 +237,7 @@ class TransitionUtilsTests(TestCase):
         class ValidatingTransition(BaseTransition):
             """Transition that raises validation error"""
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'VALIDATED'
 
             def transition(self, context):
@@ -275,8 +267,7 @@ class TransitionUtilsTests(TestCase):
 
             required_field: str = Field(...)
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'STRICT'
 
             def transition(self, context):
@@ -297,8 +288,7 @@ class TransitionUtilsTests(TestCase):
             required_field: str = Field(...)
             number_field: int = Field(default=0, ge=0)
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'VALIDATED'
 
             def transition(self, context):
@@ -330,8 +320,7 @@ class TransitionUtilsTests(TestCase):
         class CustomErrorTransition(BaseTransition):
             """Transition that raises custom error in __init__"""
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'ERROR'
 
             def transition(self, context):
@@ -355,8 +344,7 @@ class TransitionUtilsTests(TestCase):
 
             required_field: str = Field(...)
 
-            @property
-            def target_state(self) -> str:
+            def get_target_state(self, context: Optional[TransitionContext] = None) -> str:
                 return 'REQUIRED'
 
             def transition(self, context):
@@ -368,3 +356,358 @@ class TransitionUtilsTests(TestCase):
         flows = get_entity_state_flow(self.entity)
         # Should not include the transition that requires fields
         assert not any(f['transition_name'] == 'required_transition' for f in flows)
+
+
+class TestUUID7FieldCoverage(TestCase):
+    """Test coverage for UUID7Field utility methods"""
+
+    def test_get_latest_by_uuid7(self):
+        """Test UUID7Field.get_latest_by_uuid7 utility method"""
+        from fsm.utils import UUID7Field
+
+        mock_first = Mock()
+        mock_queryset = Mock()
+        mock_queryset.order_by.return_value.first.return_value = mock_first
+
+        result = UUID7Field.get_latest_by_uuid7(mock_queryset)
+
+        mock_queryset.order_by.assert_called_once_with('-id')
+        assert result == mock_first
+
+    def test_filter_by_time_range(self):
+        """Test UUID7Field.filter_by_time_range utility method"""
+        from fsm.utils import UUID7Field
+
+        start_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        end_time = datetime(2024, 1, 2, tzinfo=timezone.utc)
+
+        mock_filtered = Mock()
+        mock_queryset = Mock()
+        mock_queryset.filter.return_value = mock_filtered
+
+        result = UUID7Field.filter_by_time_range(mock_queryset, start_time, end_time)
+
+        assert mock_queryset.filter.called
+        assert result == mock_filtered
+
+    def test_filter_since_time(self):
+        """Test UUID7Field.filter_since_time utility method"""
+        from fsm.utils import UUID7Field
+
+        since_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+        mock_filtered = Mock()
+        mock_queryset = Mock()
+        mock_queryset.filter.return_value = mock_filtered
+
+        result = UUID7Field.filter_since_time(mock_queryset, since_time)
+
+        assert mock_queryset.filter.called
+        assert result == mock_filtered
+
+
+class TestResolveOrganizationIdCoverage(TestCase):
+    """Test coverage for resolve_organization_id edge cases"""
+
+    def setUp(self):
+        from core.current_request import CurrentContext
+
+        CurrentContext.clear()
+
+    def tearDown(self):
+        from core.current_request import CurrentContext
+
+        CurrentContext.clear()
+
+    def test_resolve_organization_id_with_none_entity(self):
+        """Test resolve_organization_id when entity is None"""
+        from fsm.utils import resolve_organization_id
+
+        result = resolve_organization_id(entity=None, user=None)
+        assert result is None
+
+    def test_resolve_organization_id_from_context(self):
+        """Test resolve_organization_id returns cached context value"""
+        from core.current_request import CurrentContext
+        from fsm.utils import resolve_organization_id
+
+        CurrentContext.set_organization_id(999)
+
+        # Even with entity, should return context value
+        mock_entity = Mock()
+        mock_entity.organization_id = 123
+
+        result = resolve_organization_id(entity=mock_entity)
+        assert result == 999
+
+    def test_resolve_organization_id_from_entity_direct(self):
+        """Test resolve_organization_id from entity.organization_id"""
+        from fsm.utils import resolve_organization_id
+
+        mock_entity = Mock()
+        mock_entity.organization_id = 456
+
+        result = resolve_organization_id(entity=mock_entity)
+        assert result == 456
+
+    def test_resolve_organization_id_from_project_relationship(self):
+        """Test resolve_organization_id via entity.project.organization_id"""
+        from fsm.utils import resolve_organization_id
+
+        mock_project = Mock()
+        mock_project.organization_id = 789
+
+        mock_entity = Mock()
+        mock_entity.organization_id = None
+        mock_entity.project = mock_project
+
+        result = resolve_organization_id(entity=mock_entity)
+        assert result == 789
+
+    def test_resolve_organization_id_from_task_project_relationship(self):
+        """Test resolve_organization_id via entity.task.project.organization_id"""
+        from fsm.utils import resolve_organization_id
+
+        mock_project = Mock()
+        mock_project.organization_id = 321
+
+        mock_task = Mock()
+        mock_task.project = mock_project
+
+        mock_entity = Mock()
+        mock_entity.organization_id = None
+        mock_entity.project = None
+        mock_entity.task = mock_task
+
+        result = resolve_organization_id(entity=mock_entity)
+        assert result == 321
+
+    def test_resolve_organization_id_from_user_active_organization(self):
+        """Test resolve_organization_id from user.active_organization"""
+        from fsm.utils import resolve_organization_id
+
+        mock_active_org = Mock()
+        mock_active_org.id = 654
+
+        mock_user = Mock()
+        mock_user.active_organization = mock_active_org
+
+        mock_entity = Mock()
+        mock_entity.organization_id = None
+        mock_entity.project = None
+        mock_entity.task = None
+
+        result = resolve_organization_id(entity=mock_entity, user=mock_user)
+        assert result == 654
+
+    def test_resolve_organization_id_caches_result(self):
+        """Test that resolve_organization_id caches the result in CurrentContext"""
+        from core.current_request import CurrentContext
+        from fsm.utils import resolve_organization_id
+
+        mock_entity = Mock()
+        mock_entity.organization_id = 987
+
+        result = resolve_organization_id(entity=mock_entity)
+        assert result == 987
+
+        # Verify it's cached
+        cached = CurrentContext.get_organization_id()
+        assert cached == 987
+
+
+class TestGetCurrentStateSafeCoverage(TestCase):
+    """Test coverage for get_current_state_safe error handling"""
+
+    def test_get_current_state_safe_when_fsm_disabled(self):
+        """Test get_current_state_safe returns None when FSM is disabled"""
+        from fsm.utils import get_current_state_safe
+
+        mock_entity = Mock()
+        mock_entity.pk = 1
+        mock_entity._meta = Mock()
+        mock_entity._meta.label_lower = 'test.entity'
+
+        with patch('fsm.utils.is_fsm_enabled', return_value=False):
+            result = get_current_state_safe(mock_entity)
+            assert result is None
+
+
+class TestGetOrInitializeStateParameters(TestCase):
+    """Test coverage for get_or_initialize_state reason and context_data parameters.
+
+    These tests validate that the reason and context_data parameters are correctly
+    accepted and passed through to StateManager.execute_transition().
+    """
+
+    def setUp(self):
+        self.mock_entity = MockEntity()
+
+    def test_get_or_initialize_state_accepts_reason_parameter(self):
+        """Test that get_or_initialize_state accepts reason parameter.
+
+        This test validates step by step:
+        - Calling get_or_initialize_state with a reason parameter
+        - Verifying it's passed to StateManager.execute_transition
+
+        Critical validation: The reason parameter allows callers to provide
+        context-specific reasons for state initialization.
+        """
+        from fsm.utils import get_or_initialize_state
+
+        custom_reason = 'Bulk import completed - initializing state'
+
+        with patch('fsm.utils.is_fsm_enabled', return_value=True):
+            with patch('fsm.utils.CurrentContext') as mock_context:
+                mock_context.is_fsm_disabled.return_value = False
+
+                # Mock StateManager - patch where it's imported (fsm.state_manager)
+                with patch('fsm.state_manager.get_state_manager') as mock_get_sm:
+                    mock_sm = Mock()
+                    mock_sm.get_current_state_value.return_value = None  # No existing state
+                    mock_get_sm.return_value = mock_sm
+
+                    # Mock state inference
+                    with patch('fsm.state_inference._get_or_infer_state', return_value='IN_PROGRESS'):
+                        with patch('fsm.utils._get_initialization_transition_name', return_value='init_transition'):
+                            # Call with reason
+                            get_or_initialize_state(
+                                self.mock_entity,
+                                user=None,
+                                inferred_state='IN_PROGRESS',
+                                reason=custom_reason,
+                            )
+
+                            # Verify execute_transition was called with reason
+                            mock_sm.execute_transition.assert_called_once()
+                            call_kwargs = mock_sm.execute_transition.call_args[1]
+                            assert call_kwargs.get('reason') == custom_reason
+
+    def test_get_or_initialize_state_accepts_context_data_parameter(self):
+        """Test that get_or_initialize_state accepts context_data parameter.
+
+        This test validates step by step:
+        - Calling get_or_initialize_state with a context_data parameter
+        - Verifying it's passed to StateManager.execute_transition
+
+        Critical validation: The context_data parameter allows callers to add
+        additional data to be stored in the state record's JSONB context_data.
+        """
+        from fsm.utils import get_or_initialize_state
+
+        custom_context_data = {
+            'import_source_id': 123,
+            'task_count': 456,
+            'triggered_by_api': False,
+        }
+
+        with patch('fsm.utils.is_fsm_enabled', return_value=True):
+            with patch('fsm.utils.CurrentContext') as mock_context:
+                mock_context.is_fsm_disabled.return_value = False
+
+                # Mock StateManager - patch where it's imported (fsm.state_manager)
+                with patch('fsm.state_manager.get_state_manager') as mock_get_sm:
+                    mock_sm = Mock()
+                    mock_sm.get_current_state_value.return_value = None  # No existing state
+                    mock_get_sm.return_value = mock_sm
+
+                    # Mock state inference
+                    with patch('fsm.state_inference._get_or_infer_state', return_value='IN_PROGRESS'):
+                        with patch('fsm.utils._get_initialization_transition_name', return_value='init_transition'):
+                            # Call with context_data
+                            get_or_initialize_state(
+                                self.mock_entity,
+                                user=None,
+                                inferred_state='IN_PROGRESS',
+                                context_data=custom_context_data,
+                            )
+
+                            # Verify execute_transition was called with context_data
+                            mock_sm.execute_transition.assert_called_once()
+                            call_kwargs = mock_sm.execute_transition.call_args[1]
+                            assert call_kwargs.get('context_data') == custom_context_data
+
+    def test_get_or_initialize_state_with_both_reason_and_context_data(self):
+        """Test get_or_initialize_state with both reason and context_data.
+
+        This test validates step by step:
+        - Calling get_or_initialize_state with both reason and context_data
+        - Verifying both are passed to StateManager.execute_transition
+
+        Critical validation: Both parameters should be passed independently
+        without interference.
+        """
+        from fsm.utils import get_or_initialize_state
+
+        custom_reason = 'Bulk import completed with configuration changes'
+        custom_context_data = {
+            'import_source_id': 123,
+            'previous_task_count': 100,
+            'new_task_count': 456,
+            'triggered_by_api': False,
+        }
+
+        with patch('fsm.utils.is_fsm_enabled', return_value=True):
+            with patch('fsm.utils.CurrentContext') as mock_context:
+                mock_context.is_fsm_disabled.return_value = False
+
+                # Mock StateManager - patch where it's imported (fsm.state_manager)
+                with patch('fsm.state_manager.get_state_manager') as mock_get_sm:
+                    mock_sm = Mock()
+                    mock_sm.get_current_state_value.return_value = None  # No existing state
+                    mock_get_sm.return_value = mock_sm
+
+                    # Mock state inference
+                    with patch('fsm.state_inference._get_or_infer_state', return_value='IN_PROGRESS'):
+                        with patch('fsm.utils._get_initialization_transition_name', return_value='init_transition'):
+                            # Call with both reason and context_data
+                            get_or_initialize_state(
+                                self.mock_entity,
+                                user=None,
+                                inferred_state='IN_PROGRESS',
+                                reason=custom_reason,
+                                context_data=custom_context_data,
+                            )
+
+                            # Verify execute_transition was called with both parameters
+                            mock_sm.execute_transition.assert_called_once()
+                            call_kwargs = mock_sm.execute_transition.call_args[1]
+                            assert call_kwargs.get('reason') == custom_reason
+                            assert call_kwargs.get('context_data') == custom_context_data
+
+    def test_get_or_initialize_state_defaults_context_data_to_empty_dict(self):
+        """Test that get_or_initialize_state defaults context_data to empty dict.
+
+        This test validates step by step:
+        - Calling get_or_initialize_state without context_data
+        - Verifying empty dict is passed to StateManager.execute_transition
+
+        Critical validation: When context_data is not provided, it should
+        default to an empty dict (not None) to ensure proper merging behavior.
+        """
+        from fsm.utils import get_or_initialize_state
+
+        with patch('fsm.utils.is_fsm_enabled', return_value=True):
+            with patch('fsm.utils.CurrentContext') as mock_context:
+                mock_context.is_fsm_disabled.return_value = False
+
+                # Mock StateManager - patch where it's imported (fsm.state_manager)
+                with patch('fsm.state_manager.get_state_manager') as mock_get_sm:
+                    mock_sm = Mock()
+                    mock_sm.get_current_state_value.return_value = None  # No existing state
+                    mock_get_sm.return_value = mock_sm
+
+                    # Mock state inference
+                    with patch('fsm.state_inference._get_or_infer_state', return_value='IN_PROGRESS'):
+                        with patch('fsm.utils._get_initialization_transition_name', return_value='init_transition'):
+                            # Call without context_data
+                            get_or_initialize_state(
+                                self.mock_entity,
+                                user=None,
+                                inferred_state='IN_PROGRESS',
+                            )
+
+                            # Verify execute_transition was called with empty dict for context_data
+                            mock_sm.execute_transition.assert_called_once()
+                            call_kwargs = mock_sm.execute_transition.call_args[1]
+                            assert call_kwargs.get('context_data') == {}

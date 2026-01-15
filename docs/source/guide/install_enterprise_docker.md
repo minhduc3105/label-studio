@@ -36,8 +36,8 @@ Make sure you have an authorization token to retrieve Docker images and a curren
 Make sure [Docker Compose](https://docs.docker.com/compose/install/) is installed on your system.
 
 After you install Label Studio Enterprise, the app is automatically connected to the following running services:
-- PostgresSQL (versions 11, 12, 13)
-- Redis (version 5)
+- PostgresSQL (versions >=13)
+- Redis (version >=6.0)
 
 ### Log in to a Docker registry
 
@@ -176,7 +176,7 @@ services:
       - ./mydata:/label-studio/data:rw
       - ./license.txt:/label-studio-enterprise/license.txt:ro
     working_dir: /label-studio-enterprise
-    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "low" ]
+    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "--with-scheduler", "low" ]
 
   rqworkers_default:
     image: heartexlabs/label-studio-enterprise:VERSION
@@ -188,7 +188,7 @@ services:
       - ./mydata:/label-studio/data:rw
       - ./license.txt:/label-studio-enterprise/license.txt:ro
     working_dir: /label-studio-enterprise
-    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "default"]
+    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "--with-scheduler", "default" ]
 
   rqworkers_high:
     image: heartexlabs/label-studio-enterprise:VERSION
@@ -200,7 +200,7 @@ services:
       - ./mydata:/label-studio/data:rw
       - ./license.txt:/label-studio-enterprise/license.txt:ro
     working_dir: /label-studio-enterprise
-    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "high" ]
+    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "--with-scheduler", "high"]
 
   rqworkers_critical:
     image: heartexlabs/label-studio-enterprise:VERSION
@@ -212,7 +212,7 @@ services:
       - ./mydata:/label-studio/data:rw
       - ./license.txt:/label-studio-enterprise/license.txt:ro
     working_dir: /label-studio-enterprise
-    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "critical" ]
+    command: [ "python3", "/label-studio-enterprise/label_studio_enterprise/manage.py", "rqworker", "--with-scheduler", "critical" ]
 ```
 
 3. Run Docker Compose:

@@ -27,8 +27,10 @@ export const ViewColumnType = types.enumeration([
   "Text",
   "HyperText",
   "TimeSeries",
+  "Time",
   "Unknown",
   "AgreementSelected",
+  "TaskState",
 ]);
 
 const typeShortMap = {
@@ -43,6 +45,7 @@ const typeShortMap = {
   Text: "txt",
   HyperText: "html",
   TimeSeries: "ts",
+  Time: "time",
 };
 
 export const ViewColumnTypeShort = (type) => typeShortMap[type] || "str";
@@ -59,6 +62,7 @@ const typeNameMap = {
   Text: "Text",
   HyperText: "Hyper Text",
   TimeSeries: "Time Series",
+  Time: "Time",
 };
 
 export const ViewColumnTypeName = (type) => typeNameMap[type] || "String";
@@ -186,6 +190,12 @@ export const TabColumn = types
     },
 
     get readableType() {
+      // Show a friendly tag for per-dimension agreement columns
+      if (typeof self.alias === "string") {
+        if (self.alias.startsWith("dimension_agreement__")) {
+          return "agreement";
+        }
+      }
       return ViewColumnTypeShort(self.currentType);
     },
 

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { flexRender, getCoreRowModel, useReactTable, createColumnHelper } from "@tanstack/react-table";
 import { cnm } from "@humansignal/ui";
-import { SummaryBadge } from "./SummaryBadge";
+import { Chip } from "./Chip";
 import { ResizeHandler } from "./ResizeHandler";
 import type { ObjectTypes } from "./types";
 
@@ -18,7 +18,7 @@ export const DataSummary = ({ data_types }: { data_types: ObjectTypes }) => {
         id: field,
         header: () => (
           <>
-            {field} <SummaryBadge>{type}</SummaryBadge>
+            {field} <Chip>{type}</Chip>
           </>
         ),
         cell: ({ getValue }) => {
@@ -43,7 +43,7 @@ export const DataSummary = ({ data_types }: { data_types: ObjectTypes }) => {
           // List: [{ id: <id>, body: text, title: text }, ...]
           // Paragraphs: [{ <nameKey>: name, <textKey>: text }, ...]
           if (Array.isArray(value)) {
-            return JSON.stringify(value);
+            return <div className="whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</div>;
           }
 
           // Timeseries: <channel name>: [array of values]

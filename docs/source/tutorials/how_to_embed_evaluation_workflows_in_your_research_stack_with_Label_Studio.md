@@ -8,6 +8,12 @@ community_author: bmartel
 ipynb_repo_path: tutorials/how-to-embed-evaluation-workflows-in-your-research-stack-with-label-studio/how_to_embed_evaluation_workflows_in_your_research_stack_with_Label_Studio.ipynb
 repo_url: https://github.com/HumanSignal/awesome-label-studio-tutorials/tree/main/tutorials/how-to-embed-evaluation-workflows-in-your-research-stack-with-label-studio
 report_bug_url: https://github.com/HumanSignal/awesome-label-studio-tutorials/issues/new
+thumbnail: /images/tutorials/tutorials-eval-flows-research-stack.png
+meta_title: How to Embed Evaluation Workflows in Your Research Stack with Label Studio
+meta_description: Learn how to build an embedded evaluation workflow directly into your jupyer notebook with Label Studio.
+is_enterprise: true
+badges: SDK, Embed, Colab
+duration: 10-15 mins
 ---
 ## Label Studio Requirements
 

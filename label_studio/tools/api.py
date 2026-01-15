@@ -381,6 +381,52 @@ class ToolRunAPI(generics.GenericAPIView):
             url_path = None
             
         return url_path
+    
+    def _cleanup_minio_bucket(self, project):
+        """
+        Helper function to delete the MinIO bucket and all its contents.
+        MinIO requires the bucket to be empty before deletion.
+        """
+        bucket_name = f"project-{project.id}-data"
+        
+        try:
+            # 1. Re-establish connection (Copy logic from step 1)
+            minio_endpoint = os.getenv("MINIO_URL", "localhost:9000")
+            minio_endpoint = minio_endpoint.replace("http://", "").replace("https://", "")
+            
+            minio_client = Minio(
+                minio_endpoint,
+                access_key=os.getenv("MINIO_ACCESS_KEY", "minio_admin_do_not_use_in_production"),
+                secret_key=os.getenv("MINIO_SECRET_KEY", "minio_admin_do_not_use_in_production"),
+                secure=False 
+            )
+
+            # 2. Check if bucket exists
+            if not minio_client.bucket_exists(bucket_name):
+                logger.info(f"Bucket {bucket_name} does not exist, skipping cleanup.")
+                return
+
+            # 3. List all objects in the bucket
+            # recursive=True ensures we get files inside folders
+            objects = minio_client.list_objects(bucket_name, recursive=True)
+            
+            # 4. Remove all objects one by one (or use remove_objects for batch if supported)
+            # Standard S3/MinIO rule: You cannot delete a non-empty bucket.
+            found_objects = False
+            for obj in objects:
+                found_objects = True
+                minio_client.remove_object(bucket_name, obj.object_name)
+            
+            if found_objects:
+                logger.info(f"Cleared all objects from {bucket_name}")
+
+            # 5. Remove the bucket itself
+            minio_client.remove_bucket(bucket_name)
+            logger.info(f"Successfully deleted bucket: {bucket_name}")
+
+        except Exception as e:
+            # Log error but don't crash the main response
+            logger.error(f"Failed to cleanup MinIO bucket {bucket_name}: {e}")
 
     def _process_task_data(self,project, task, mapping):
         """
@@ -830,6 +876,8 @@ class ToolRunAPI(generics.GenericAPIView):
                 request.user,
                 tool_name=tool.name
             )
+
+            self._cleanup_minio_bucket(project)
 
             return Response({
                 "status": "success",

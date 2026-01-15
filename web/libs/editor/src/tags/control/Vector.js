@@ -40,7 +40,6 @@ const hotkeys = Hotkey("Vectors");
  * @param {boolean} [skeleton=false]              - Enables skeleton mode to allow branch paths
  * @param {number|none} [minPoints=none]          - Minimum allowed number of points
  * @param {number|none} [maxPoints=none]          - Maximum allowed number of points
- * @param {boolean} [constrainToBounds=false]     - Whether to keep shapes inside image bounds
  * @param {number} [pointSizeEnabled=5]           - Size of a point in pixels when shape is selected
  * @param {number} [pointSizeDisabled=3]          - Size of a point in pixels when shape is not selected
  */
@@ -62,7 +61,6 @@ const TagAttrs = types.model({
   curves: types.optional(types.maybeNull(types.boolean), false),
   minpoints: types.optional(types.maybeNull(types.string), null),
   maxpoints: types.optional(types.maybeNull(types.string), null),
-  constraintobounds: types.optional(types.maybeNull(types.boolean), false),
   skeleton: types.optional(types.maybeNull(types.boolean), false),
   pointsizeenabled: types.optional(types.maybeNull(types.string), "5"),
   pointsizedisabled: types.optional(types.maybeNull(types.string), "3"),
@@ -81,32 +79,7 @@ const Model = types
   })
   .volatile(() => ({
     toolNames: ["Vector"],
-  }))
-  .actions((self) => {
-    return {
-      initializeHotkeys() {
-        hotkeys.addNamed("vector:undo", () => {
-          if (self.annotation?.selected && self.annotation.isDrawing) self.annotation.undo();
-        });
-        hotkeys.addNamed("vector:redo", () => {
-          if (self.annotation?.selected && self.annotation.isDrawing) self.annotation.redo();
-        });
-      },
-
-      disposeHotkeys() {
-        hotkeys.removeNamed("vector:undo");
-        hotkeys.removeNamed("vector:redo");
-      },
-
-      afterCreate() {
-        self.initializeHotkeys();
-      },
-
-      beforeDestroy() {
-        self.disposeHotkeys();
-      },
-    };
-  });
+  }));
 
 const VectorModel = types.compose(
   "VectorModel",

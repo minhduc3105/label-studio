@@ -3,23 +3,25 @@ import { format } from "date-fns";
 import { useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import { IconCheck, IconEllipsis, IconMinus, IconSparks } from "@humansignal/icons";
-import { Userpic, Button, Spinner } from "@humansignal/ui";
+import { Userpic, Button, Spinner, Tooltip } from "@humansignal/ui";
 import { Dropdown, Menu, Pagination } from "../../components";
 import { Block, Elem } from "../../utils/bem";
 import { absoluteURL } from "../../utils/helpers";
 import { useToolRunning } from "../../providers/ToolRunningProvider";
+import { cn } from "../../utils/bem";
+import { ProjectStateChip } from "@humansignal/app-common";
 
 const DEFAULT_CARD_COLORS = ["#FFFFFF", "#FDFDFC"];
 
 export const ProjectsList = ({ projects, currentPage, totalItems, loadNextPage, pageSize }) => {
   return (
     <>
-      <Elem name="list">
+      <div className={cn("projects-page").elem("list").toClassName()}>
         {projects.map((project) => (
           <ProjectCard key={project.id} project={project} />
         ))}
-      </Elem>
-      <Elem name="pages">
+      </div>
+      <div className={cn("projects-page").elem("pages").toClassName()}>
         <Pagination
           name="projects-list"
           label="Projects"
@@ -30,23 +32,8 @@ export const ProjectsList = ({ projects, currentPage, totalItems, loadNextPage, 
           pageSizeOptions={[10, 30, 50, 100]}
           onPageLoad={(page, pageSize) => loadNextPage(page, pageSize)}
         />
-      </Elem>
+      </div>
     </>
-  );
-};
-
-export const EmptyProjectsList = ({ openModal }) => {
-  return (
-    <Block name="empty-projects-page">
-      <Elem name="heidi" tag="img" src={absoluteURL("/static/images/opossum_looking.png")} />
-      <Elem name="header" tag="h1">
-        Heidi doesn’t see any projects here!
-      </Elem>
-      <p>Create one and start labeling your data.</p>
-      <Button onClick={openModal} className="my-8" aria-label="Create new project">
-        Create Project
-      </Button>
-    </Block>
   );
 };
 
@@ -57,61 +44,44 @@ const ProjectCard = ({ project }) => {
 
   const color = useMemo(() => {
     return DEFAULT_CARD_COLORS.includes(project.color) ? null : project.color;
-  }, [project]);
+  }, [project.color]);
 
   const projectColors = useMemo(() => {
-    const textColor =
-      color && chr(color).luminance() > 0.3
-        ? "var(--color-neutral-inverted-content)"
-        : "var(--color-neutral-inverted-content)"; // Determine text color based on luminance
-    return color
-      ? {
-          "--header-color": color,
-          "--background-color": chr(color).alpha(0.2).css(),
-          "--text-color": textColor,
-          "--border-color": chr(color).alpha(0.5).css(),
-        }
-      : {};
+    if (!color) return {};
+    return {
+      "--header-color": color,
+      "--background-color": chr(color).alpha(0.15).css(),
+      "--border-color": chr(color).alpha(0.4).css(),
+    };
   }, [color]);
 
   return (
-    <Elem tag={NavLink} name="link" to={`/projects/${project.id}/data`} data-external>
+    <NavLink
+      className={cn("projects-page").elem("link").toClassName()}
+      to={`/projects/${project.id}/data`}
+      data-external
+    >
       <Block name="project-card" mod={{ colored: !!color, running: hasRunningTools }} style={projectColors}>
         <Elem name="header">
           <Elem name="title">
-            {hasRunningTools && (
-              <Elem 
-                name="tool-running-indicator"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  marginRight: '8px',
-                  padding: '4px 8px',
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(59, 130, 246, 0.3)',
-                }}
-              >
-                <Spinner size="small" style={{ width: '14px', height: '14px' }} />
-                <span style={{ 
-                  fontSize: '12px', 
-                  fontWeight: '500',
-                  color: '#3b82f6'
-                }}>
-                  {runningCount} tool{runningCount > 1 ? 's' : ''} running
-                </span>
-              </Elem>
-            )}
-            <Elem name="title-text">{project.title ?? "New project"}</Elem>
+            <Elem name="title-text-wrapper">
+              {hasRunningTools && (
+                <Elem name="tool-running-indicator">
+                  <Spinner size="small" />
+                  <span>{runningCount} running</span>
+                </Elem>
+              )}
+              <Tooltip title={project.title ?? "New project"}>
+                <Elem name="title-text">
+                  {project.title ?? "New project"}
+                </Elem>
+              </Tooltip>
+            </Elem>
 
-            <Elem
-              name="menu"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-            >
+            <Elem name="menu" onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}>
               <Dropdown.Trigger
                 content={
                   <Menu contextual>
@@ -125,7 +95,14 @@ const ProjectCard = ({ project }) => {
                 </Button>
               </Dropdown.Trigger>
             </Elem>
+
+            {project.state && (
+              <Elem name="state-chip">
+                <ProjectStateChip state={project.state} projectId={project.id} interactive={false} />
+              </Elem>
+            )}
           </Elem>
+
           <Elem name="summary">
             <Elem name="annotation">
               <Elem name="total">
@@ -133,29 +110,33 @@ const ProjectCard = ({ project }) => {
               </Elem>
               <Elem name="detail">
                 <Elem name="detail-item" mod={{ type: "completed" }}>
-                  <Elem tag={IconCheck} name="icon" />
+                  <IconCheck />
                   {project.total_annotations_number}
                 </Elem>
                 <Elem name="detail-item" mod={{ type: "rejected" }}>
-                  <Elem tag={IconMinus} name="icon" />
+                  <IconMinus />
                   {project.skipped_annotations_number}
                 </Elem>
                 <Elem name="detail-item" mod={{ type: "predictions" }}>
-                  <Elem tag={IconSparks} name="icon" />
+                  <IconSparks />
                   {project.total_predictions_number}
                 </Elem>
               </Elem>
             </Elem>
           </Elem>
         </Elem>
+
         <Elem name="description">{project.description}</Elem>
+
         <Elem name="info">
-          <Elem name="created-date">{format(new Date(project.created_at), "dd MMM ’yy, HH:mm")}</Elem>
+          <Elem name="created-date">
+            {format(new Date(project.created_at), "dd MMM yyyy, HH:mm")}
+          </Elem>
           <Elem name="created-by">
             <Userpic src="#" user={project.created_by} showUsernameTooltip />
           </Elem>
         </Elem>
       </Block>
-    </Elem>
+    </NavLink>
   );
 };

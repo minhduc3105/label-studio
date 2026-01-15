@@ -16,7 +16,7 @@ interface VectorTransformerProps {
   selectedPoints: Set<number>;
   initialPoints: BezierPoint[];
   transformerRef: React.RefObject<any>;
-  proxyRefs?: React.MutableRefObject<{ [key: number]: Konva.Rect | null }>;
+  proxyRefs?: React.MutableRefObject<{ [key: number]: Konva.Circle | null }>;
   onPointsChange?: (points: BezierPoint[]) => void;
   onTransformStateChange?: (state: {
     rotation: number;
@@ -27,11 +27,15 @@ interface VectorTransformerProps {
   }) => void;
   onTransformationStart?: () => void;
   onTransformationEnd?: () => void;
+  onTransformEnd?: (e: any) => void;
   bounds?: { x: number; y: number; width: number; height: number };
   scaleX?: number;
   scaleY?: number;
   transform?: { zoom: number; offsetX: number; offsetY: number };
   fitScale?: number;
+  updateCurrentPointsRef?: (points: BezierPoint[]) => void;
+  getCurrentPointsRef?: () => BezierPoint[];
+  pixelSnapping?: boolean;
 }
 
 export const VectorTransformer: React.FC<VectorTransformerProps> = ({
@@ -43,11 +47,15 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
   onTransformStateChange,
   onTransformationStart,
   onTransformationEnd,
+  onTransformEnd,
   bounds,
   scaleX = 1,
   scaleY = 1,
   transform = { zoom: 1, offsetX: 0, offsetY: 0 },
   fitScale = 1,
+  updateCurrentPointsRef,
+  getCurrentPointsRef,
+  pixelSnapping = false,
 }) => {
   const transformerStateRef = React.useRef<{
     rotation: number;
@@ -141,7 +149,15 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
               originalPositionsRef.current,
               transformerCenter,
               bounds,
+              getCurrentPointsRef,
+              updateCurrentPointsRef,
+              pixelSnapping,
             );
+
+            // Update the ref immediately so next transformation tick uses latest points
+            if (updateCurrentPointsRef) {
+              updateCurrentPointsRef(newPoints);
+            }
 
             // Skip control point transformations on the first tick to avoid jumping
             if (isFirstTransformTickRef.current) {
@@ -166,6 +182,7 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
                   transformerCenter.x,
                   transformerCenter.y,
                   isActualRotation, // Only apply rotation logic if there's actual rotation
+                  pixelSnapping,
                 );
                 onPointsChange?.(updatedPoints);
               });
@@ -233,6 +250,9 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
         isFirstTransformTickRef.current = true;
       }}
       onDragStart={(_e: any) => {
+        // Notify that transformation has started (for history freezing)
+        onTransformationStart?.();
+
         // Store original positions when dragging starts (for pure drag operations)
         originalPositionsRef.current = {};
         Array.from(selectedPoints).forEach((index) => {
@@ -364,7 +384,15 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
               originalPositionsRef.current,
               transformerCenter,
               bounds,
+              getCurrentPointsRef,
+              updateCurrentPointsRef,
+              pixelSnapping,
             );
+
+            // Update the ref immediately so next transformation tick uses latest points
+            if (updateCurrentPointsRef) {
+              updateCurrentPointsRef(newPoints);
+            }
 
             // Apply transformation to control points using RAF
             if (rafIdRef.current) {
@@ -381,6 +409,7 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
                 transformerCenter.x,
                 transformerCenter.y,
                 false, // isRotation = false for onDragMove (translation only)
+                pixelSnapping,
               );
               onPointsChange?.(updatedPoints);
             });
@@ -410,7 +439,14 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
             originalPositionsRef.current,
             transformerCenter,
             bounds,
+            getCurrentPointsRef,
+            updateCurrentPointsRef,
           );
+
+          // Update the ref immediately so next transformation uses latest points
+          if (updateCurrentPointsRef) {
+            updateCurrentPointsRef(newPoints);
+          }
 
           // Apply control point transformations
           const updatedPoints = applyTransformationToControlPoints(
@@ -422,6 +458,7 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
             transformerCenter.x,
             transformerCenter.y,
             false, // isRotation = false for drag operations
+            pixelSnapping,
           );
 
           onPointsChange?.(updatedPoints);
@@ -443,6 +480,9 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
         } catch (error) {
           console.warn("Drag end error:", error);
         }
+
+        // Notify that transformation has ended (for history unfreezing)
+        onTransformationEnd?.();
       }}
       onTransformEnd={(_e: any) => {
         // Get the transformer
@@ -465,7 +505,14 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
             originalPositionsRef.current,
             transformerCenter,
             bounds,
+            getCurrentPointsRef,
+            updateCurrentPointsRef,
           );
+
+          // Update the ref immediately so next transformation uses latest points
+          if (updateCurrentPointsRef) {
+            updateCurrentPointsRef(newPoints);
+          }
           // Apply control point transformations
           const isActualRotation = Math.abs(transformer.rotation()) > 1.0;
           const updatedPoints = applyTransformationToControlPoints(
@@ -477,6 +524,7 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
             transformerCenter.x,
             transformerCenter.y,
             isActualRotation,
+            pixelSnapping,
           );
 
           onPointsChange?.(updatedPoints);
@@ -503,6 +551,9 @@ export const VectorTransformer: React.FC<VectorTransformerProps> = ({
 
         // Notify that transformation has ended
         onTransformationEnd?.();
+
+        // Call external onTransformEnd handler
+        onTransformEnd?.(_e);
       }}
     />
   );

@@ -4,7 +4,7 @@ import { Button, ButtonGroup, Spinner, Typography } from "@humansignal/ui";
 import { Interface } from "../../Common/Interface";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconChevronDown } from "@humansignal/icons";
-import { Dropdown } from "../../Common/Dropdown/DropdownComponent";
+import { Dropdown } from "@humansignal/ui";
 import { Menu } from "../../Common/Menu/Menu";
 // MỚI: Thêm modal
 import { modal } from "../../Common/Modal/Modal";
@@ -510,38 +510,25 @@ export const LabelButton = injector(
         .find((v) => v.startsWith(name + "="))
         ?.split("=")[1];
 
-    const buildAuthHeaders = () => {
+    // 1. Helper: Auth Headers
+    const buildAuthHeaders = useCallback(() => {
       const headers = { "Content-Type": "application/json" };
-      const token =
-        localStorage.getItem("access") || localStorage.getItem("token") || null;
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      else {
+      const token = localStorage.getItem("access") || localStorage.getItem("token") || null;
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      } else {
         const csrftoken = getCookie("csrftoken");
         if (csrftoken) headers["X-CSRFToken"] = csrftoken;
       }
       return headers;
-    };
-    // --- Hết hàm helper ---
-
-    const handleClickOutside = useCallback((e) => {
-      const el = triggerRef.current;
-
-      if (el && !el.contains(e.target)) {
-        setIsOpen(false);
-      }
     }, []);
 
-    useEffect(() => {
-      document.addEventListener("click", handleClickOutside, { capture: true });
+    // 2. State cho Tools
+    const [tools, setTools] = useState([]);
+    const [isLoadingTools, setIsLoadingTools] = useState(false);
 
-      return () => {
-        document.removeEventListener("click", handleClickOutside, {
-          capture: true,
-        });
-      };
-    }, []);
-
-    // Fetch tools from API
+    // 3. Fetch Tools API
     const fetchTools = useCallback(async () => {
       if (!project || !project.id) return;
 
@@ -553,9 +540,7 @@ export const LabelButton = injector(
           headers: buildAuthHeaders(),
         });
 
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status} - Failed to fetch tools`);
-        }
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
         const data = await resp.json();
         setTools(data || []);
@@ -565,103 +550,21 @@ export const LabelButton = injector(
       } finally {
         setIsLoadingTools(false);
       }
-    }, [project]);
+    }, [project, buildAuthHeaders]);
 
+    // Load tools khi component mount
     useEffect(() => {
       fetchTools();
     }, [fetchTools]);
 
-    const showChoiceModal = (mode) => {
-      let choiceModalRef;
-
-      // Logic xử lý khi chọn Manual
-      const startManual = () => {
-        choiceModalRef.close();
-        // Logic cũ: set mode và start stream
-        localStorage.setItem("dm:labelstream:mode", mode);
-        store.startLabelStream();
-      };
-
-      // Logic xử lý khi chọn Import
-      const startImport = () => {
-        choiceModalRef.close();
-        // Mở tiếp Modal Upload
-        const importModalRef = modal({
-          title: "Import Labels from File",
-          style: { width: 500 },
-          body: (
-            <ImportLabelModal
-              project={project}
-              buildAuthHeaders={buildAuthHeaders}
-              closeModal={() => importModalRef.close()}
-            />
-          ),
-        });
-      };
-
-      // Hiển thị Modal Lựa chọn 2 Option
-      choiceModalRef = modal({
-        title: "Choose Labeling Method",
-        style: { width: 400 },
-        body: (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "1rem",
-              padding: "1rem 0",
-            }}
-          >
-            <Button
-              onClick={startImport}
-              style={{
-                height: "50px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "10px",
-                fontSize: "16px",
-              }}
-            >
-              📁 1. Import Label File
-            </Button>
-
-            <Button
-              variant="primary"
-              onClick={startManual}
-              style={{
-                height: "50px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "10px",
-                fontSize: "16px",
-              }}
-            >
-              ✍️ 2. Manual Labeling
-            </Button>
-          </div>
-        ),
-      });
-    };
-
-    const onLabelAll = () => {
-      showChoiceModal("all");
-    };
-
-    const onLabelVisible = () => {
-      showChoiceModal("filtered");
-    };
-
-    // Handle tool click to open beautiful modal
+    // 4. Handle Tool Click (Mở Modal Tool)
     const onToolClick = (tool) => {
       let modalRef;
-
       const handleToolDeleted = () => {
-        fetchTools();
+        if (modalRef) modalRef.close();
+        fetchTools(); // Reload list sau khi xóa
       };
 
-      // Open beautiful modal
       modalRef = modal({
         title: `Tool: ${tool.name}`,
         canClose: true,
@@ -678,40 +581,74 @@ export const LabelButton = injector(
       });
     };
 
-    const triggerStyle = {
-      width: 24,
-      padding: 0,
-      borderTopLeftRadius: 0,
-      borderBottomLeftRadius: 0,
-      borderBottomRightRadius: isOpen ? 0 : undefined,
-      boxShadow: "none",
+    // 5. Handle Choice Modal (Import vs Manual)
+    const showChoiceModal = (mode) => {
+      let choiceModalRef;
+
+      const startManual = () => {
+        choiceModalRef.close();
+        localStorage.setItem("dm:labelstream:mode", mode);
+        store.startLabelStream();
+      };
+
+      const startImport = () => {
+        choiceModalRef.close();
+        const importModalRef = modal({
+          title: "Import Labels from File",
+          style: { width: 500 },
+          body: (
+            <ImportLabelModal
+              project={project}
+              buildAuthHeaders={buildAuthHeaders}
+              closeModal={() => importModalRef.close()}
+            />
+          ),
+        });
+      };
+
+      choiceModalRef = modal({
+        title: "Choose Labeling Method",
+        style: { width: 400 },
+        body: (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1rem 0" }}>
+            <Button
+              onClick={startImport}
+              style={{ height: "50px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontSize: "16px" }}
+            >
+              📁 1. Import Label File
+            </Button>
+
+            <Button
+              variant="primary"
+              onClick={startManual}
+              style={{ height: "50px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontSize: "16px" }}
+            >
+              ✍️ 2. Manual Labeling
+            </Button>
+          </div>
+        ),
+      });
     };
 
+    const onLabelAll = () => showChoiceModal("all");
+    const onLabelVisible = () => showChoiceModal("filtered");
+
+    // 6. Styles
     const primaryStyle = {
       width: 160,
       padding: 0,
       borderTopRightRadius: 0,
       borderBottomRightRadius: 0,
-      borderBottomLeftRadius: isOpen ? 0 : undefined,
     };
 
-    // ... (secondStyle và selectedCount giữ nguyên) ...
-    const secondStyle = {
-      width: triggerStyle.width + primaryStyle.width,
-      padding: 0,
-      display: isOpen ? "flex" : "none",
-      position: "absolute",
-      zIndex: 10,
-      borderTopLeftRadius: 0,
-      borderTopRightRadius: 0,
-    };
-    selectedCount;
+    // 7. Render
+    if (!canLabel) return null;
 
-    // --- (Phần JSX return giữ nguyên như file của bạn) ---
-    return canLabel ? (
+    return (
       <Interface name="labelButton">
         <div>
           <ButtonGroup>
+            {/* Nút Label chính */}
             <Button
               size={size ?? "small"}
               variant="primary"
@@ -720,44 +657,40 @@ export const LabelButton = injector(
               style={primaryStyle}
               onClick={onLabelAll}
             >
-              Label {selectedCount ? selectedCount : "All"} Task
-              {!selectedCount || selectedCount > 1 ? "s" : "s"}
+              Label {selectedCount ? selectedCount : "All"} Task{(!selectedCount || selectedCount > 1) && "s"}
             </Button>
+
+            {/* Dropdown Menu */}
             <Dropdown.Trigger
               align="bottom-right"
               content={
                 <Menu size="compact">
-                  <Menu.Item onClick={onLabelVisible}>
-                    Label Tasks As Displayed
-                  </Menu.Item>
-
+                  <Menu.Item onClick={onLabelVisible}>Label Tasks As Displayed</Menu.Item>
+                  
+                  {/* Divider nếu có tools */}
                   {(tools.length > 0 || isLoadingTools) && <Menu.Divider />}
 
+                  {/* Loading state */}
                   {isLoadingTools && (
-                    <Menu.Item
-                      disabled
-                      style={{ color: "#94a3b8", fontStyle: "italic" }}
-                    >
+                    <Menu.Item disabled style={{ color: "#94a3b8", fontStyle: "italic" }}>
                       Loading tools...
                     </Menu.Item>
                   )}
 
-                  {!isLoadingTools &&
-                    tools.map((tool) => (
-                      <Menu.Item
-                        key={tool.id}
-                        onClick={() => onToolClick(tool)}
-                        style={{ fontWeight: "500" }}
-                      >
-                        🛠️ {tool.name}
-                      </Menu.Item>
-                    ))}
-
-                  {!isLoadingTools && tools.length === 0 && (
+                  {/* List Tools */}
+                  {!isLoadingTools && tools.map((tool) => (
                     <Menu.Item
-                      disabled
-                      style={{ color: "#94a3b8", fontStyle: "italic" }}
+                      key={tool.id}
+                      onClick={() => onToolClick(tool)}
+                      style={{ fontWeight: "500" }}
                     >
+                      🛠️ {tool.name}
+                    </Menu.Item>
+                  ))}
+
+                  {/* Empty state */}
+                  {!isLoadingTools && tools.length === 0 && (
+                    <Menu.Item disabled style={{ color: "#94a3b8", fontStyle: "italic" }}>
                       No tools available
                     </Menu.Item>
                   )}
@@ -768,7 +701,8 @@ export const LabelButton = injector(
                 size={size}
                 look="outlined"
                 variant="primary"
-                aria-label={"Toggle open"}
+                aria-label="Toggle open"
+                style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
               >
                 <IconChevronDown />
               </Button>
@@ -776,6 +710,6 @@ export const LabelButton = injector(
           </ButtonGroup>
         </div>
       </Interface>
-    ) : null;
+    );
   }
 );
